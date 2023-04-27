@@ -1,4 +1,5 @@
 logs
-*_pb2.py
+generated
+**_pb2.py
 __pycache__
 graphs

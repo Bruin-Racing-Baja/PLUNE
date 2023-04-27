@@ -16,7 +16,7 @@ class FigureInfo(NamedTuple):
     title: str
 
 
-paths = log_parser.getLogsByExtension("logs", "bin")
+paths = log_parser.getFilesByExtension("logs", "bin")
 
 figure_infos = [
     FigureInfo(
@@ -90,7 +90,7 @@ def onFileSelection(path):
     if path == None:
         return no_update
 
-    header, df = log_parser.parseBinaryFile(path)
+    header, df = log_parser.loadBinary(path)
     log_parser.postProcessDataframe(df)
 
     title = header.timestamp_human
@@ -98,26 +98,27 @@ def onFileSelection(path):
         title = "Timestamp Missing"
 
     graphs = []
-    for i, figure_info in enumerate(figure_infos):
+    for figure_info in figure_infos:
         if not set(figure_info.y_axis).issubset(df.columns):
             print(f'Column(s) Missing: Skipping "{figure_info.title}" for {path}')
             continue
-        fig = go.Figure()
+
         traces = [
             go.Scatter(x=df[figure_info.x_axis], y=df[y_axis], name=y_axis)
             for y_axis in figure_info.y_axis
         ]
-        fig.add_traces(traces)
+
+        fig = go.Figure(traces)
         fig.update_layout(
             title=figure_info.title,
             xaxis_title=figure_info.x_axis,
             showlegend=True,
             margin=dict(l=20, r=20, t=60, b=20),
         )
+
         graphs.append(dcc.Graph(figure=fig))
 
     odrive_errors = odrive_utils.getODriveErrors(df)
-
     if len(odrive_errors) != 0:
         odrive_error_dict = {}
         for odrive_error in odrive_errors:
@@ -150,45 +151,32 @@ def onFileSelection(path):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Script description")
+    parser = argparse.ArgumentParser(description="PLotting Utility N Exporter")
 
     parser.add_argument(
-        "-e", "--export", action="store_true", help="Export all logs to html graphs"
+        "-e", "--export", action="store_true", help="export all logs to html graphs"
     )
 
     args = parser.parse_args()
 
     if args.export:
         for path in paths:
-            header, df = log_parser.parseBinaryFile(path)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Script description")
-
-    parser.add_argument(
-        "-e", "--export", action="store_true", help="Export all logs to html graphs"
-    )
-
-    args = parser.parse_args()
-
-    if args.export:
-        for path in paths:
-            header, df = log_parser.parseBinaryFile(path)
+            header, df = log_parser.loadBinary(path)
             log_parser.postProcessDataframe(df)
             figures = []
-            for i, figure_info in enumerate(figure_infos):
+            for figure_info in figure_infos:
                 if not set(figure_info.y_axis).issubset(df.columns):
                     print(
                         f'Column(s) Missing: Skipping "{figure_info.title}" for {path}'
                     )
                     continue
-                figure = go.Figure()
+
                 traces = [
                     go.Scatter(x=df[figure_info.x_axis], y=df[y_axis], name=y_axis)
                     for y_axis in figure_info.y_axis
                 ]
-                figure.add_traces(traces)
+
+                figure = go.Figure(traces)
                 figure.update_layout(
                     title=figure_info.title,
                     xaxis_title=figure_info.x_axis,
@@ -198,7 +186,8 @@ if __name__ == "__main__":
 
             filename_without_ext = os.path.splitext(os.path.basename(path))[0]
             html_path = f"graphs/{filename_without_ext}.html"
+
             print(f"Exporting {path} -> {html_path}")
-            log_parser.figuresToHTML(figures, html_path)
+            log_parser.dumpFiguresToHTML(figures, html_path)
     else:
         app.run_server(debug=True)

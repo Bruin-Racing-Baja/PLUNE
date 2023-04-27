@@ -1,52 +1,18 @@
 import os
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 from google.protobuf import json_format
 
-import header_message_pb2
-import log_message_pb2
+from generated import header_message_pb2, log_message_pb2
 
 header_message_id = 0
 log_message_id = 1
 
 
-class DescribedDataframe(pd.DataFrame):
-    _metadata = ["filename", "description"]
-
-    @property
-    def _constructor(self):
-        return DescribedDataframe
-
-
-csv_cols = [
-    "control_cycle_dt_us",
-    "voltage",
-    "last_heartbeat_ms",
-    "wheel_rpm",
-    "engine_rpm",
-    "target_rpm",
-    "velocity_command",
-    "unclamped_velocity_command",
-    "shadow_count",
-    "inbound_estop",
-    "outbound_estop",
-    "iq_measured",
-    "flushed",
-    "wheel_count",
-    "engine_count",
-    "iq_setpoint",
-    "control_cycle_start_us",
-    "control_cycle_stop_us",
-    "odrive_current",
-    "axis_error",
-    "motor_error",
-    "encoder_error",
-]
-csv_cols_no_unclamp = [col for col in csv_cols if col != "unclamped_velocity_command"]
-
-
-def getLogsByExtension(log_dir, ext):
+def getFilesByExtension(log_dir: str, ext: str) -> List[str]:
     log_dir_contents = os.listdir(log_dir)
     txt_paths = []
     for potential_file in log_dir_contents:
@@ -58,69 +24,11 @@ def getLogsByExtension(log_dir, ext):
     return txt_paths
 
 
-def filterFilesBySize(paths, size_kb):
+def filterFilesBySize(paths: List[str], size_kb: int) -> List[str]:
     return [path for path in paths if os.path.getsize(path) >= size_kb * 1e3]
 
 
-def dumpToBinary(path, header, df):
-    with open(path, "wb") as bin_file:
-        serialized_header_message = header.SerializeToString()
-        message_type = header_message_id
-        message_length = len(serialized_header_message)
-        delimiter = f"{message_type:01X}{message_length:04X}"
-
-        bin_file.write(delimiter.encode())
-        bin_file.write(serialized_header_message)
-
-        rows = df.to_dict(orient="records")
-        log_message = log_message_pb2.LogMessage()
-        for row in rows:
-            json_format.ParseDict(row, log_message)
-            serialized_log_message = log_message.SerializeToString()
-
-            message_type = log_message_id
-            message_length = len(serialized_log_message)
-            delimiter = f"{message_type:01X}{message_length:04X}"
-
-            bin_file.write(delimiter.encode())
-            bin_file.write(serialized_log_message)
-
-
-def convertCSVToBinary(path):
-    df = pd.read_csv(path, skiprows=1, header=None)
-    if len(df.columns) == 21:
-        df.columns = csv_cols_no_unclamp
-    else:
-        df.columns = csv_cols
-    df["inbound_estop"] = df["inbound_estop"].astype(bool)
-    df["outbound_estop"] = df["outbound_estop"].astype(bool)
-    df = df.drop("flushed", axis=1)
-
-    path_without_ext = os.path.splitext(path)[0]
-    with open(f"{path_without_ext}.bin", "wb") as bin_file:
-        rows = df.to_dict(orient="records")
-        log_message = log_message_pb2.LogMessage()
-        for row in rows:
-            json_format.ParseDict(row, log_message)
-            serialized_log_message = log_message.SerializeToString()
-
-            message_type = log_message_id
-            message_length = len(serialized_log_message)
-            delimiter = f"{message_type:01X}{message_length:04X}"
-
-            bin_file.write(delimiter.encode())
-            bin_file.write(serialized_log_message)
-
-
-def parseCSVFile(path):
-    try:
-        df = pd.read_csv(path, skiprows=1, header=None, names=csv_cols)
-    except:
-        return None, None
-    return None, DescribedDataframe(df)
-
-
-def parseBinaryFile(path):
+def loadBinary(path: str) -> Tuple[header_message_pb2.HeaderMessage, pd.DataFrame]:
     header_message = None
     df = None
     with open(path, "rb") as file:
@@ -147,26 +55,68 @@ def parseBinaryFile(path):
                     row_values.append(getattr(log_message, field.name))
                 all_rows.append(row_values)
         columns = [field.name for field in log_message_pb2.LogMessage.DESCRIPTOR.fields]
-        df = DescribedDataframe(all_rows, columns=columns)
+        df = pd.DataFrame(all_rows, columns=columns)
     return header_message, df
 
 
-def addNormalizedColumns(df):
-    for col in df:
+def dumpDataframeToBinary(
+    path: str, header: header_message_pb2.HeaderMessage, df: pd.DataFrame
+) -> None:
+    with open(path, "wb") as bin_file:
+        serialized_header_message = header.SerializeToString()
+        message_type = header_message_id
+        message_length = len(serialized_header_message)
+        delimiter = f"{message_type:01X}{message_length:04X}"
+
+        bin_file.write(delimiter.encode())
+        bin_file.write(serialized_header_message)
+
+        rows = df.to_dict(orient="records")
+        log_message = log_message_pb2.LogMessage()
+        for row in rows:
+            json_format.ParseDict(row, log_message)
+            serialized_log_message = log_message.SerializeToString()
+
+            message_type = log_message_id
+            message_length = len(serialized_log_message)
+            delimiter = f"{message_type:01X}{message_length:04X}"
+
+            bin_file.write(delimiter.encode())
+            bin_file.write(serialized_log_message)
+
+
+def dumpFiguresToHTML(figs: List[go.Figure], path: str, offline: bool = False):
+    with open(path, "w") as file:
+        file.write("<html><head></head><body>\n")
+        for fig in figs:
+            tmp_layout = fig.layout
+            fig.update_layout(font={"size": 20})
+            inner_html = (
+                fig.to_html(include_plotlyjs=(True if offline else "cdn"))
+                .split("<body>")[1]
+                .split("</body>")[0]
+            )
+            file.write(inner_html)
+            fig.layout = tmp_layout
+        file.write("</body></html>\n")
+
+
+def appendNormalizedSeries(df: pd.DataFrame) -> None:
+    for col in df.columns:
         col_norm = f"norm_{col}"
         if col.startswith("norm_") or col_norm in df:
             continue
-        col_obj = df[col]
-        if np.issubdtype(col_obj.dtype, np.number):
-            if np.max(col_obj) == np.min(col_obj):
+        cur_series = df[col]
+        if np.issubdtype(cur_series.dtype, np.number):
+            if np.max(cur_series) == np.min(cur_series):
                 df[col_norm] = 0.0
             else:
-                df[col_norm] = (col_obj - np.min(col_obj)) / (
-                    np.max(col_obj) - np.min(col_obj)
+                df[col_norm] = (cur_series - np.min(cur_series)) / (
+                    np.max(cur_series) - np.min(cur_series)
                 )
 
 
-def postProcessDataframe(df):
+def postProcessDataframe(df: pd.DataFrame) -> None:
     wheel_diameter = 23
     pitch_angle = 5
     encoder_cpr = 8192
@@ -186,27 +136,13 @@ def postProcessDataframe(df):
     df["shift_ratio"] = df["secondary_rpm"] / df["engine_rpm"]
     df["shift_ratio"] = df["shift_ratio"].clip(lower=0.2, upper=2)
 
-    addNormalizedColumns(df)
+    appendNormalizedSeries(df)
 
 
-def trimDataFrame(df, start_s=0, end_s=float("inf")):
+def trimDataframe(
+    df: pd.DataFrame, start_s: float = 0, end_s: float = float("inf")
+) -> pd.DataFrame:
     df = df.loc[
         (start_s < df["control_cycle_start_s"]) & (df["control_cycle_start_s"] < end_s)
     ]
     return df
-
-
-def figuresToHTML(figs, filename, offline=False):
-    with open(filename, "w") as file:
-        file.write(f"<html><head></head><body>\n")
-        for fig in figs:
-            font_size_backup = fig.layout.font.size
-            fig.update_layout(font={"size": 20})
-            inner_html = (
-                fig.to_html(include_plotlyjs=(True if offline else "cdn"))
-                .split("<body>")[1]
-                .split("</body>")[0]
-            )
-            file.write(inner_html)
-            fig.update_layout(font={"size": font_size_backup})
-        file.write("</body></html>\n")
