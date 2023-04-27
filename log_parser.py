@@ -194,3 +194,19 @@ def trimDataFrame(df, start_s=0, end_s=float("inf")):
         (start_s < df["control_cycle_start_s"]) & (df["control_cycle_start_s"] < end_s)
     ]
     return df
+
+
+def figuresToHTML(figs, filename, offline=False):
+    with open(filename, "w") as file:
+        file.write(f"<html><head></head><body>\n")
+        for fig in figs:
+            font_size_backup = fig.layout.font.size
+            fig.update_layout(font={"size": 20})
+            inner_html = (
+                fig.to_html(include_plotlyjs=(True if offline else "cdn"))
+                .split("<body>")[1]
+                .split("</body>")[0]
+            )
+            file.write(inner_html)
+            fig.update_layout(font={"size": font_size_backup})
+        file.write("</body></html>\n")

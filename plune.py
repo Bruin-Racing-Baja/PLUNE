@@ -5,7 +5,6 @@ from typing import List, NamedTuple
 
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, callback, dash_table, dcc, html, no_update
-from figures import figuresToHTML
 
 import log_parser
 import odrive_utils
@@ -200,6 +199,6 @@ if __name__ == "__main__":
             filename_without_ext = os.path.splitext(os.path.basename(path))[0]
             html_path = f"graphs/{filename_without_ext}.html"
             print(f"Exporting {path} -> {html_path}")
-            figuresToHTML(figures, html_path)
+            log_parser.figuresToHTML(figures, html_path)
     else:
         app.run_server(debug=True)
