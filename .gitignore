@@ -1,5 +1,4 @@
 logs
-generated
-**_pb2.py
+generated_protos
 __pycache__
 graphs

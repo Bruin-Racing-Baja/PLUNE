@@ -6,8 +6,7 @@ from typing import List, NamedTuple
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, callback, dash_table, dcc, html, no_update
 
-import log_parser
-import odrive_utils
+from utils import log_parser, odrive_utils
 
 
 class FigureInfo(NamedTuple):
@@ -26,7 +25,8 @@ figure_infos = [
     ),
     FigureInfo(
         x_axis="control_cycle_start_s",
-        y_axis=["norm_engine_rpm", "norm_secondary_rpm", "norm_actuator_position_mm"],
+        y_axis=["norm_engine_rpm", "norm_secondary_rpm",
+                "norm_actuator_position_mm"],
         title="Normalized Engine/Secondary RPM, Actuator Position",
     ),
     FigureInfo(
@@ -62,9 +62,12 @@ app = Dash(__name__)
 
 app.layout = html.Div(
     [
-        html.H1(children="Loading...", style={"textAlign": "center"}, id="title"),
-        html.H4(children="Loading...", style={"textAlign": "center"}, id="subtitle"),
-        dcc.Dropdown(paths, paths[-1], id="file-selection"),
+        html.H1(children="Loading...", style={
+                "textAlign": "center"}, id="title"),
+        html.H4(children="Loading...", style={
+                "textAlign": "center"}, id="subtitle"),
+        dcc.Dropdown(paths, paths[-1],
+                     id="file-selection", style={"width": "50%"}),
         html.Div(
             dash_table.DataTable(),
             id="odrive-errors",
@@ -100,7 +103,8 @@ def onFileSelection(path):
     graphs = []
     for figure_info in figure_infos:
         if not set(figure_info.y_axis).issubset(df.columns):
-            print(f'Column(s) Missing: Skipping "{figure_info.title}" for {path}')
+            print(
+                f'Column(s) Missing: Skipping "{figure_info.title}" for {path}')
             continue
 
         traces = [
@@ -124,9 +128,11 @@ def onFileSelection(path):
         for odrive_error in odrive_errors:
             timestamp_str = f"{odrive_error.timestamp:.03f}"
             if not timestamp_str in odrive_error_dict:
-                odrive_error_dict[timestamp_str] = "\n".join(odrive_error.names)
+                odrive_error_dict[timestamp_str] = "\n".join(
+                    odrive_error.names)
             else:
-                odrive_error_dict[timestamp_str] += "\n" + "\n".join(odrive_error.names)
+                odrive_error_dict[timestamp_str] += "\n" + \
+                    "\n".join(odrive_error.names)
 
         odrive_error_rows = [
             {"timestamp": timestamp, "errors": errors}
@@ -172,7 +178,8 @@ if __name__ == "__main__":
                     continue
 
                 traces = [
-                    go.Scatter(x=df[figure_info.x_axis], y=df[y_axis], name=y_axis)
+                    go.Scatter(x=df[figure_info.x_axis],
+                               y=df[y_axis], name=y_axis)
                     for y_axis in figure_info.y_axis
                 ]
 
