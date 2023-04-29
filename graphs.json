@@ -1,0 +1,68 @@
+{
+  "figures": [
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "engine_rpm",
+        "secondary_rpm",
+        "target_rpm"
+      ],
+      "title": "Engine, Secondary, Target RPM"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "norm_engine_rpm",
+        "norm_secondary_rpm",
+        "norm_actuator_position_mm"
+      ],
+      "title": "Normalized Engine/Secondary RPM, Actuator Position"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "norm_shift_ratio",
+        "norm_actuator_position_mm"
+      ],
+      "title": "Normalized Shift Ratio, Actuator Position"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "velocity_command",
+        "unclamped_velocity_command"
+      ],
+      "title": "Velocity Command"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "shadow_count"
+      ],
+      "title": "Shadow Count"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "wheel_mph"
+      ],
+      "title": "Vehicle Speed"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "vehicle_position_feet"
+      ],
+      "title": "Vehcile Position"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "engine_rpm",
+        "filtered_engine_rpm",
+        "engine_rpm_deriv_error"
+      ],
+      "title": "Controller Error"
+    }
+  ]
+}

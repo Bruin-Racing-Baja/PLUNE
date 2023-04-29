@@ -1,73 +1,51 @@
 #!/usr/bin/env python
 import argparse
+import json
 import os
 from typing import List, NamedTuple
 
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, callback, dash_table, dcc, html, no_update
+from dash import Dash, Input, Output, State, callback, dash_table, dcc, html, no_update
 
 from utils import log_parser, odrive_utils
 
-
-class FigureInfo(NamedTuple):
-    x_axis: str
-    y_axis: List[str]
-    title: str
-
-
+graph_info_file = "graphs.json"
 paths = log_parser.getFilesByExtension("logs", "bin")
 
-figure_infos = [
-    FigureInfo(
-        x_axis="control_cycle_start_s",
-        y_axis=["engine_rpm", "secondary_rpm", "target_rpm"],
-        title="Engine, Secondary, Target RPM",
-    ),
-    FigureInfo(
-        x_axis="control_cycle_start_s",
-        y_axis=["norm_engine_rpm", "norm_secondary_rpm",
-                "norm_actuator_position_mm"],
-        title="Normalized Engine/Secondary RPM, Actuator Position",
-    ),
-    FigureInfo(
-        x_axis="control_cycle_start_s",
-        y_axis=["norm_shift_ratio", "norm_actuator_position_mm"],
-        title="Normalized Shift Ratio, Actuator Position",
-    ),
-    FigureInfo(
-        x_axis="control_cycle_start_s",
-        y_axis=["velocity_command", "unclamped_velocity_command"],
-        title="Velocity Command",
-    ),
-    FigureInfo(
-        x_axis="control_cycle_start_s", y_axis=["shadow_count"], title="Shadow Count"
-    ),
-    FigureInfo(
-        x_axis="control_cycle_start_s", y_axis=["wheel_mph"], title="Vehicle Speed"
-    ),
-    FigureInfo(
-        x_axis="control_cycle_start_s",
-        y_axis=["vehicle_position_feet"],
-        title="Vehcile Position",
-    ),
-    FigureInfo(
-        x_axis="control_cycle_start_s",
-        y_axis=["engine_rpm", "filtered_engine_rpm", "engine_rpm_deriv_error"],
-        title="Controller Error",
-    ),
-]
 
 app = Dash(__name__)
 
 
 app.layout = html.Div(
     [
-        html.H1(children="Loading...", style={
-                "textAlign": "center"}, id="title"),
-        html.H4(children="Loading...", style={
-                "textAlign": "center"}, id="subtitle"),
-        dcc.Dropdown(paths, paths[-1],
-                     id="file-selection", style={"width": "50%"}),
+        dcc.Loading(
+            id="title-loading",
+            children=html.Div(
+                children=[
+                    html.H1(
+                        children="Loading...", style={"textAlign": "center"}, id="title"
+                    ),
+                    html.H4(
+                        children="Loading...",
+                        style={"textAlign": "center"},
+                        id="subtitle",
+                    ),
+                ]
+            ),
+        ),
+        dcc.Loading(
+            id="export-loading",
+            children=[
+                html.Div(
+                    [
+                        html.Div(id="export-loading-spinner"),
+                    ]
+                )
+            ],
+            type="cube",
+        ),
+        dcc.Dropdown(paths, paths[-1], id="file-selection", style={"width": "50%"}),
+        html.Button("Export Graphs", id="export-graphs"),
         html.Div(
             dash_table.DataTable(),
             id="odrive-errors",
@@ -78,6 +56,19 @@ app.layout = html.Div(
         ),
     ]
 )
+
+
+@callback(
+    [
+        Output("export-loading-spinner", "children"),
+        Input("export-graphs", "n_clicks"),
+    ]
+)
+def onExportButtonClicked(n_clicks):
+    if n_clicks == None:
+        return (None,)
+    log_parser.exportGraphsToHTML(paths, graph_info_file)
+    return (None,)
 
 
 @callback(
@@ -101,26 +92,29 @@ def onFileSelection(path):
         title = "Timestamp Missing"
 
     graphs = []
-    for figure_info in figure_infos:
-        if not set(figure_info.y_axis).issubset(df.columns):
-            print(
-                f'Column(s) Missing: Skipping "{figure_info.title}" for {path}')
-            continue
+    with open(graph_info_file) as file:
+        graph_json_data = json.load(file)
+        for graph_info in graph_json_data["figures"]:
+            if not set(graph_info["y_axis"]).issubset(df.columns):
+                print(f'Column(s) Missing: Skipping "{graph_info["title"]}" for {path}')
+                continue
 
-        traces = [
-            go.Scatter(x=df[figure_info.x_axis], y=df[y_axis], name=y_axis)
-            for y_axis in figure_info.y_axis
-        ]
+            traces = [
+                go.Scatter(x=df[graph_info["x_axis"]], y=df[y_axis], name=y_axis)
+                for y_axis in graph_info["y_axis"]
+            ]
+            print(len(traces))
 
-        fig = go.Figure(traces)
-        fig.update_layout(
-            title=figure_info.title,
-            xaxis_title=figure_info.x_axis,
-            showlegend=True,
-            margin=dict(l=20, r=20, t=60, b=20),
-        )
+            fig = go.Figure(traces)
+            fig.update_layout(
+                title=graph_info["title"],
+                xaxis_title=graph_info["x_axis"],
+                showlegend=True,
+                margin=dict(l=20, r=20, t=60, b=20),
+            )
 
-        graphs.append(dcc.Graph(figure=fig))
+            graphs.append(dcc.Graph(figure=fig))
+    print(len(graphs))
 
     odrive_errors = odrive_utils.getODriveErrors(df)
     if len(odrive_errors) != 0:
@@ -128,11 +122,9 @@ def onFileSelection(path):
         for odrive_error in odrive_errors:
             timestamp_str = f"{odrive_error.timestamp:.03f}"
             if not timestamp_str in odrive_error_dict:
-                odrive_error_dict[timestamp_str] = "\n".join(
-                    odrive_error.names)
+                odrive_error_dict[timestamp_str] = "\n".join(odrive_error.names)
             else:
-                odrive_error_dict[timestamp_str] += "\n" + \
-                    "\n".join(odrive_error.names)
+                odrive_error_dict[timestamp_str] += "\n" + "\n".join(odrive_error.names)
 
         odrive_error_rows = [
             {"timestamp": timestamp, "errors": errors}
@@ -166,35 +158,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.export:
-        for path in paths:
-            header, df = log_parser.loadBinary(path)
-            log_parser.postProcessDataframe(df)
-            figures = []
-            for figure_info in figure_infos:
-                if not set(figure_info.y_axis).issubset(df.columns):
-                    print(
-                        f'Column(s) Missing: Skipping "{figure_info.title}" for {path}'
-                    )
-                    continue
-
-                traces = [
-                    go.Scatter(x=df[figure_info.x_axis],
-                               y=df[y_axis], name=y_axis)
-                    for y_axis in figure_info.y_axis
-                ]
-
-                figure = go.Figure(traces)
-                figure.update_layout(
-                    title=figure_info.title,
-                    xaxis_title=figure_info.x_axis,
-                    showlegend=True,
-                )
-                figures.append(figure)
-
-            filename_without_ext = os.path.splitext(os.path.basename(path))[0]
-            html_path = f"graphs/{filename_without_ext}.html"
-
-            print(f"Exporting {path} -> {html_path}")
-            log_parser.dumpFiguresToHTML(figures, html_path)
+        log_parser.exportGraphsToHTML(paths, graph_info_file)
     else:
         app.run_server(debug=True)

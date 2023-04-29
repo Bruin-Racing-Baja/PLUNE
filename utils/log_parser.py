@@ -1,3 +1,4 @@
+import json
 import os
 from typing import List, Tuple
 
@@ -6,7 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from google.protobuf import json_format
 
-from generated import header_message_pb2, log_message_pb2
+from generated_protos import header_message_pb2, log_message_pb2
 
 header_message_id = 0
 log_message_id = 1
@@ -146,3 +147,34 @@ def trimDataframe(
         (start_s < df["control_cycle_start_s"]) & (df["control_cycle_start_s"] < end_s)
     ]
     return df
+
+
+def exportGraphsToHTML(paths, graph_info_file, export_dir="graphs", silent=False):
+    for path in paths:
+        header, df = loadBinary(path)
+        postProcessDataframe(df)
+        figures = []
+        with open(graph_info_file) as file:
+            graph_json_data = json.load(file)
+            for graph_info in graph_json_data["figures"]:
+                if not set(graph_info["y_axis"]).issubset(df.columns):
+                    print(
+                        f'Column(s) Missing: Skipping "{graph_info["title"]}" for {path}'
+                    )
+                    continue
+                traces = [
+                    go.Scatter(x=df[graph_info["x_axis"]], y=df[y_axis], name=y_axis)
+                    for y_axis in graph_info["y_axis"]
+                ]
+                figure = go.Figure(traces)
+                figure.update_layout(
+                    title=graph_info["title"],
+                    xaxis_title=graph_info["x_axis"],
+                    showlegend=True,
+                )
+                figures.append(figure)
+        filename_without_ext = os.path.splitext(os.path.basename(path))[0]
+        html_path = os.path.join(export_dir, f"{filename_without_ext}.html")
+        if not silent:
+            print(f"Exporting {path} -> {html_path}")
+        dumpFiguresToHTML(figures, html_path)
