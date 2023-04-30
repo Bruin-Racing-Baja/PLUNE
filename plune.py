@@ -103,7 +103,6 @@ def onFileSelection(path):
                 go.Scatter(x=df[graph_info["x_axis"]], y=df[y_axis], name=y_axis)
                 for y_axis in graph_info["y_axis"]
             ]
-            print(len(traces))
 
             fig = go.Figure(traces)
             fig.update_layout(
@@ -114,7 +113,6 @@ def onFileSelection(path):
             )
 
             graphs.append(dcc.Graph(figure=fig))
-    print(len(graphs))
 
     odrive_errors = odrive_utils.getODriveErrors(df)
     if len(odrive_errors) != 0:
