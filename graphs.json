@@ -63,6 +63,39 @@
         "engine_rpm_deriv_error"
       ],
       "title": "Controller Error"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "voltage",
+        "iq_measured"
+      ],
+      "title": "Voltage and Current"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "norm_engine_rpm",
+        "norm_velocity_estimate",
+        "norm_velocity_command"
+      ],
+      "title": "Normalized Engine RPM, Velocity Estimate/Command"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "norm_brake_light_signal",
+        "norm_engine_rpm"
+      ],
+      "title": "Normalized Brake Light Signal, Engine RPM"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "velocity_estimate",
+        "velocity_command"
+      ],
+      "title": "Velocities"
     }
   ]
 }

@@ -1,6 +1,7 @@
 import json
 import os
 from typing import List, Tuple
+import html
 
 import numpy as np
 import pandas as pd
@@ -86,9 +87,14 @@ def dumpDataframeToBinary(
             bin_file.write(serialized_log_message)
 
 
-def dumpFiguresToHTML(figs: List[go.Figure], path: str, offline: bool = False):
+def dumpFiguresToHTML(figs: List[go.Figure], header: header_message_pb2.HeaderMessage, path: str, offline: bool = False):
     with open(path, "w") as file:
-        file.write("<html><head></head><body>\n")
+        header_info = ""
+        if header != None:
+            header_json = json_format.MessageToJson(header)
+            header_json_formatted = html.escape(header_json).replace("\n","<br>")
+            header_info = f"<div style='font-size: 28px;'>{header_json_formatted}</div>"
+        file.write(f"<html><head></head><body>{header_info}\n")
         for fig in figs:
             tmp_layout = fig.layout
             fig.update_layout(font={"size": 20})
@@ -123,6 +129,8 @@ def postProcessDataframe(df: pd.DataFrame) -> None:
     encoder_cpr = 8192
     wheel_to_secondary_ratio = (57 / 18) * (45 / 17)
     df["control_cycle_start_s"] = df["control_cycle_start_us"] / 1e6
+    if "last_control_cycle_stop_us" in df.columns:
+        df["last_control_cycle_stop_s"] = df["last_control_cycle_stop_us"] / 1e6
     df["control_cycle_dt_s"] = df["control_cycle_dt_us"] / 1e6
 
     df["secondary_rpm"] = df["wheel_rpm"] * wheel_to_secondary_ratio
@@ -177,4 +185,24 @@ def exportGraphsToHTML(paths, graph_info_file, export_dir="graphs", silent=False
         html_path = os.path.join(export_dir, f"{filename_without_ext}.html")
         if not silent:
             print(f"Exporting {path} -> {html_path}")
-        dumpFiguresToHTML(figures, html_path)
+        dumpFiguresToHTML(figures, header, html_path)
+
+def exportTuningGraphs(paths, export_path="graphs/tuning.html", silent=False):
+    figures = []
+    for path in paths:
+        header, df = loadBinary(path)
+        postProcessDataframe(df)
+
+        x_axis = "control_cycle_start_s"
+        y_axises = ["engine_rpm", "secondary_rpm", "target_rpm"]
+        title = f"{header.timestamp_human} (KP = {header.p_gain:.06f}, KD = {header.d_gain:.06f})"
+        traces = [go.Scatter(x=df[x_axis], y=df[y_axis], name=y_axis) for y_axis in y_axises]
+        figure = go.Figure(traces)
+        figure.update_layout(
+            title=title,
+            xaxis_title=x_axis,
+            showlegend=True,
+        )
+        figures.append(figure)
+    
+    dumpFiguresToHTML(figures, None, export_path)

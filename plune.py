@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 from dash import Dash, Input, Output, State, callback, dash_table, dcc, html, no_update
 
 from utils import log_parser, odrive_utils
+from google.protobuf import json_format
 
 graph_info_file = "graphs.json"
 paths = log_parser.getFilesByExtension("logs", "bin")
@@ -47,6 +48,10 @@ app.layout = html.Div(
         dcc.Dropdown(paths, paths[-1], id="file-selection", style={"width": "50%"}),
         html.Button("Export Graphs", id="export-graphs"),
         html.Div(
+            "",
+            id="gains",
+        ),
+        html.Div(
             dash_table.DataTable(),
             id="odrive-errors",
         ),
@@ -67,7 +72,8 @@ app.layout = html.Div(
 def onExportButtonClicked(n_clicks):
     if n_clicks == None:
         return (None,)
-    log_parser.exportGraphsToHTML(paths, graph_info_file)
+    log_parser.exportGraphsToHTML(paths, graph_info_file, silent=True)
+    log_parser.exportTuningGraphs(paths)
     return (None,)
 
 
@@ -77,6 +83,7 @@ def onExportButtonClicked(n_clicks):
         Output("subtitle", "children"),
         Output("graphs", "children"),
         Output("odrive-errors", "children"),
+        Output("gains", "children"),
         Input("file-selection", "value"),
     ]
 )
@@ -143,7 +150,7 @@ def onFileSelection(path):
     else:
         odrive_error_table = None
 
-    return title, path, graphs, [odrive_error_table]
+    return title, path, graphs, [odrive_error_table], json_format.MessageToJson(header)
 
 
 if __name__ == "__main__":
