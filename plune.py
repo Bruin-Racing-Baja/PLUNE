@@ -76,7 +76,8 @@ def onExportButtonClicked(n_clicks):
     log_parser.exportTuningGraphs(paths)
     return (None,)
 
-
+import pandas as pd
+import time
 @callback(
     [
         Output("title", "children"),
@@ -91,10 +92,13 @@ def onFileSelection(path):
     if path == None:
         return no_update
 
-    header, df = log_parser.loadBinary(path)
-    log_parser.postProcessDataframe(df)
+    log_data = log_parser.loadBinary(path)
+    header = log_data.header
+    df = log_data.df
 
-    title = header.timestamp_human
+    log_parser.postProcessLogData(log_data)
+
+    title = log_data.header.timestamp_human
     if title == "":
         title = "Timestamp Missing"
 
@@ -153,16 +157,45 @@ def onFileSelection(path):
     return title, path, graphs, [odrive_error_table], json_format.MessageToJson(header)
 
 
+import numpy as np
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PLotting Utility N Exporter")
 
     parser.add_argument(
         "-e", "--export", action="store_true", help="export all logs to html graphs"
     )
+    parser.add_argument(
+        "-t", "--test", action="store_true", help="testing"
+    )
 
     args = parser.parse_args()
 
     if args.export:
         log_parser.exportGraphsToHTML(paths, graph_info_file)
+    if args.test:
+
+        np.set_printoptions(suppress=True)
+        all_stats = []
+        i = 0
+        for path in paths[-50:]:
+            print(i)
+            orig_size = os.path.getsize(path)/1e6
+            log_data = log_parser.loadBinary(path)
+            header = log_data.header
+            df = log_data.df
+            log_parser.postProcessLogData(log_data)
+            formats, stats = log_parser.dumpLogDataToJson("out", log_data)
+            stats = np.array(stats)
+            stats[:,0] /= orig_size
+            all_stats.append(stats)
+            i += 1
+
+        x = np.array(all_stats)
+        mean_times = np.mean(x[:,:,0], axis=0)
+        mean_memories = np.mean(x[:,:,1], axis=0)
+        print(formats)
+        print(mean_times)
+        print(mean_memories)
+        
     else:
         app.run_server(debug=True)

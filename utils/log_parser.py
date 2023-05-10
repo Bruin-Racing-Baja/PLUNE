@@ -9,9 +9,25 @@ import plotly.graph_objects as go
 from google.protobuf import json_format
 
 from generated_protos import header_message_pb2, log_message_pb2
+import io
+from google.protobuf import message as _message
+from enum import IntEnum
 
-header_message_id = 0
-log_message_id = 1
+
+class MessageID(IntEnum):
+    NONE = -1
+    HEADER = 0
+    LOG = 1
+
+
+class LogData:
+    def __init__(
+        self,
+        header: header_message_pb2.HeaderMessage = header_message_pb2.HeaderMessage(),
+        df: pd.DataFrame = pd.DataFrame(),
+    ):
+        self.header = header
+        self.df = df
 
 
 def getFilesByExtension(log_dir: str, ext: str) -> List[str]:
@@ -30,35 +46,122 @@ def filterFilesBySize(paths: List[str], size_kb: int) -> List[str]:
     return [path for path in paths if os.path.getsize(path) >= size_kb * 1e3]
 
 
-def loadBinary(path: str) -> Tuple[header_message_pb2.HeaderMessage, pd.DataFrame]:
-    header_message = None
-    df = None
+def nextDelimitedMessage(
+    buffer: io.BufferedIOBase,
+) -> Tuple[_message.Message, MessageID]:
+    raw_message_id = buffer.read(1)
+    if raw_message_id == b"":
+        return None, MessageID.NONE
+    message_id = MessageID(int(raw_message_id, 16))
+
+    raw_message_length = buffer.read(4)
+    message_length = int(raw_message_length, 16)
+
+    raw_message = buffer.read(message_length)
+    if message_id == MessageID.HEADER:
+        message = header_message_pb2.HeaderMessage()
+    elif message_id == MessageID.LOG:
+        message = log_message_pb2.LogMessage()
+    message.ParseFromString(raw_message)
+
+    return message, message_id
+
+
+def loadBinary(path: str) -> LogData:
+    log_data = LogData()
+    columns = [field.name for field in log_message_pb2.LogMessage.DESCRIPTOR.fields]
+    rows = []
     with open(path, "rb") as file:
-        all_rows = []
-        header_message = header_message_pb2.HeaderMessage()
         while True:
-            message_type_raw = file.read(1)
-            if message_type_raw == b"":
+            message, message_id = nextDelimitedMessage(file)
+
+            if message_id == MessageID.NONE:
                 break
-            message_length_raw = file.read(4)
+            elif message_id == MessageID.HEADER:
+                log_data.header = message
+            elif message_id == MessageID.LOG:
+                row_values = [None] * len(columns)
+                for idx, col in enumerate(columns):
+                    row_values[idx] = getattr(message, col)
+                rows.append(row_values)
+    log_data.df = pd.DataFrame(rows, columns=columns)
+    return log_data
 
-            message_type = int(message_type_raw, 16)
-            message_length = int(message_length_raw, 16)
-            message = file.read(message_length)
 
-            if message_type == header_message_id:
-                header_message.ParseFromString(message)
-            elif message_type == log_message_id:
-                message_type = log_message_pb2.LogMessage.DESCRIPTOR
-                log_message = log_message_pb2.LogMessage()
-                log_message.ParseFromString(message)
-                row_values = []
-                for field in log_message_pb2.LogMessage.DESCRIPTOR.fields:
-                    row_values.append(getattr(log_message, field.name))
-                all_rows.append(row_values)
-        columns = [field.name for field in log_message_pb2.LogMessage.DESCRIPTOR.fields]
-        df = pd.DataFrame(all_rows, columns=columns)
-    return header_message, df
+from time import process_time
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+def toParquet(prefix: str, df: pd.DataFrame):
+    start_s = process_time()
+    filename = f"{prefix}.parquet"
+    pq.write_table(pa.Table.from_pandas(df), filename)
+    end_s = process_time()
+    return os.path.getsize(filename)/1e6,end_s-start_s
+
+def toJson(prefix: str, df: pd.DataFrame):
+    start_s = process_time()
+    filename = f"{prefix}.json"
+    df.to_json(filename, orient="split")
+    end_s = process_time()
+    return os.path.getsize(filename)/1e6,end_s-start_s
+
+def toPickle(prefix: str, df: pd.DataFrame):
+    start_s = process_time()
+    filename = f"{prefix}.pickle"
+    df.to_pickle(filename)
+    end_s = process_time()
+    return os.path.getsize(filename)/1e6,end_s-start_s
+
+def toNumpy(prefix: str, df: pd.DataFrame):
+    start_s = process_time()
+    filename = f"{prefix}.npy"
+    np.save(filename, df.to_numpy())
+    end_s = process_time()
+    return os.path.getsize(filename)/1e6,end_s-start_s
+
+def toFeather(prefix: str, df: pd.DataFrame):
+    start_s = process_time()
+    filename = f"{prefix}.feather"
+    df.to_feather(filename)
+    end_s = process_time()
+    return os.path.getsize(filename)/1e6,end_s-start_s
+
+def toCSV(prefix: str, df: pd.DataFrame):
+    start_s = process_time()
+    filename = f"{prefix}.csv"
+    df.to_csv(filename)
+    end_s = process_time()
+    return os.path.getsize(filename)/1e6,end_s-start_s
+
+
+def dumpLogDataToJson(filename: str, log_data: LogData):
+    with open(filename, "w") as file:
+        df = log_data.df
+        formats = ["parquet", "json", "pickle", "numpy", "feather", "csv"]
+        stats = []
+        stats.append(toParquet(filename, df))
+        stats.append(toJson(filename, df))
+        stats.append(toPickle(filename, df))
+        stats.append(toNumpy(filename, df))
+        stats.append(toFeather(filename, df))
+        stats.append(toCSV(filename, df))
+
+        #json_data = log_data.df.to_json("out.json", orient="split")
+        #a = json.JSONDecoder().raw_decode(json_data)[0]
+        #json_obj = {
+            #"header": json_format.MessageToJson(log_data.header   ),
+            #"dataframe": a
+        #}
+        #print(type(json_obj["dataframe"]))
+        #file.write(log_data.df.to_json(orient="split"))
+    return formats, stats
+
+
+def loadJsonToDataframe(filename: str) -> pd.DataFrame:
+    with open(filename, "r") as file:
+        json_data = file.read()
+        df = pd.read_json(json_data, orient="split")
 
 
 def dumpDataframeToBinary(
@@ -87,12 +190,17 @@ def dumpDataframeToBinary(
             bin_file.write(serialized_log_message)
 
 
-def dumpFiguresToHTML(figs: List[go.Figure], header: header_message_pb2.HeaderMessage, path: str, offline: bool = False):
+def dumpFiguresToHTML(
+    figs: List[go.Figure],
+    header: header_message_pb2.HeaderMessage,
+    path: str,
+    offline: bool = False,
+):
     with open(path, "w") as file:
         header_info = ""
         if header != None:
             header_json = json_format.MessageToJson(header)
-            header_json_formatted = html.escape(header_json).replace("\n","<br>")
+            header_json_formatted = html.escape(header_json).replace("\n", "<br>")
             header_info = f"<div style='font-size: 28px;'>{header_json_formatted}</div>"
         file.write(f"<html><head></head><body>{header_info}\n")
         for fig in figs:
@@ -123,11 +231,12 @@ def appendNormalizedSeries(df: pd.DataFrame) -> None:
                 )
 
 
-def postProcessDataframe(df: pd.DataFrame) -> None:
+def postProcessLogData(log_data: LogData):
     wheel_diameter = 23
     pitch_angle = 5
     encoder_cpr = 8192
     wheel_to_secondary_ratio = (57 / 18) * (45 / 17)
+    df = log_data.df
     df["control_cycle_start_s"] = df["control_cycle_start_us"] / 1e6
     if "last_control_cycle_stop_us" in df.columns:
         df["last_control_cycle_stop_s"] = df["last_control_cycle_stop_us"] / 1e6
@@ -187,6 +296,7 @@ def exportGraphsToHTML(paths, graph_info_file, export_dir="graphs", silent=False
             print(f"Exporting {path} -> {html_path}")
         dumpFiguresToHTML(figures, header, html_path)
 
+
 def exportTuningGraphs(paths, export_path="graphs/tuning.html", silent=False):
     figures = []
     for path in paths:
@@ -196,7 +306,9 @@ def exportTuningGraphs(paths, export_path="graphs/tuning.html", silent=False):
         x_axis = "control_cycle_start_s"
         y_axises = ["engine_rpm", "secondary_rpm", "target_rpm"]
         title = f"{header.timestamp_human} (KP = {header.p_gain:.06f}, KD = {header.d_gain:.06f})"
-        traces = [go.Scatter(x=df[x_axis], y=df[y_axis], name=y_axis) for y_axis in y_axises]
+        traces = [
+            go.Scatter(x=df[x_axis], y=df[y_axis], name=y_axis) for y_axis in y_axises
+        ]
         figure = go.Figure(traces)
         figure.update_layout(
             title=title,
@@ -204,5 +316,5 @@ def exportTuningGraphs(paths, export_path="graphs/tuning.html", silent=False):
             showlegend=True,
         )
         figures.append(figure)
-    
+
     dumpFiguresToHTML(figures, None, export_path)
