@@ -1,4 +1,7 @@
-logs
-generated_protos
 __pycache__
+
+generated_protos
+
+raw_logs
+logs
 graphs
