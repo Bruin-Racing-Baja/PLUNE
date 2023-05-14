@@ -24,9 +24,11 @@ class LogData:
         self,
         header: header_message_pb2.HeaderMessage = header_message_pb2.HeaderMessage(),
         df: pd.DataFrame = pd.DataFrame(),
+        description: str = "",
     ):
         self.header = header
         self.df = df
+        self.description = description
 
 
 def getFilesByExtension(directory: str, ext: str) -> List[str]:
@@ -100,6 +102,8 @@ def loadJson(filename: str, post_process=False) -> LogData:
             log_data.df = pd.DataFrame(**json_obj["dataframe"])
         if "header" in json_obj:
             json_format.ParseDict(json_obj["header"], log_data.header)
+        if "metadata" in json_obj:
+            log_data.description = json_obj["metadata"].get("description", "")
     if post_process:
         postProcessLogData(log_data)
     return log_data
@@ -111,6 +115,7 @@ def dumpLogDataToJson(filename: str, log_data: LogData):
         json_obj = {
             "header": json.loads(json_format.MessageToJson(log_data.header)),
             "dataframe": json.loads(log_data.df.to_json(orient="split", index=False)),
+            "metadata": {"description": log_data.description},
         }
         json.dump(json_obj, file, separators=(",", ":"))
 

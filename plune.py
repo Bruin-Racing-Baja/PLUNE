@@ -6,7 +6,18 @@ from typing import List
 
 import pandas as pd
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, State, callback, dash_table, dcc, html, no_update
+from dash import (
+    Dash,
+    Input,
+    Output,
+    State,
+    callback,
+    callback_context,
+    dash_table,
+    dcc,
+    html,
+    no_update,
+)
 from google.protobuf import json_format
 
 from generated_protos import header_message_pb2
@@ -18,7 +29,7 @@ export_dir = "graphs"
 graph_info_file = "graphs.json"
 
 with open(graph_info_file, "r") as file:
-    graph_info_json = json.load(file)
+    graph_info_json = json.loads(file.read())
 raw_paths = log_parser.getFilesByExtension(raw_log_dir, "bin")
 json_paths = log_parser.getFilesByExtension(json_log_dir, "json")
 
@@ -60,7 +71,7 @@ app.layout = html.Div(
             style={"width": "50%"},
         ),
         html.Button(
-            "Export Graphs",
+            "EXPORT GRAPHS",
             id="export-graphs",
             style={
                 "width": "160px",
@@ -73,12 +84,37 @@ app.layout = html.Div(
             },
         ),
         html.Div(
-            dash_table.DataTable(),
-            id="header",
-        ),
-        html.Div(
-            dash_table.DataTable(),
-            id="odrive-errors",
+            [
+                dcc.Textarea(
+                    id="description-input",
+                    style={
+                        "width": "350px",
+                        "height": "150px",
+                    },
+                ),
+                html.Button(
+                    "💾",
+                    id="description-save",
+                    style={
+                        "width": "36px",
+                        "height": "36px",
+                        "cursor": "pointer",
+                        "border": "1px solid #cccccc",
+                        "border-radius": "5px",
+                        "background-color": "#eeeeee",
+                        "color": "black",
+                    },
+                ),
+                html.Div(
+                    dash_table.DataTable(),
+                    id="header",
+                ),
+                html.Div(
+                    dash_table.DataTable(),
+                    id="odrive-errors",
+                ),
+            ],
+            style={"display": "flex", "flex-direction": "row"},
         ),
         html.Div(
             [],
@@ -119,8 +155,8 @@ def createODriveErrorTable(df: pd.DataFrame) -> dash_table.DataTable:
     odrive_error_table = dash_table.DataTable(
         id="datatable",
         columns=[
-            {"name": "Timestamp", "id": "timestamp"},
-            {"name": "Errors", "id": "errors"},
+            {"name": "TIMESTAMP", "id": "timestamp"},
+            {"name": "ODRIVE ERRORS", "id": "errors"},
         ],
         data=odrive_error_rows,
         style_cell={"whiteSpace": "pre-line", "textAlign": "left"},
@@ -137,11 +173,12 @@ def createHeaderTable(header: header_message_pb2.HeaderMessage) -> dash_table.Da
     ]
     header_table = dash_table.DataTable(
         columns=[
-            {"name": "Constant", "id": "constant"},
-            {"name": "Value", "id": "value"},
+            {"name": "CONSTANT", "id": "constant"},
+            {"name": "VALUE", "id": "value"},
         ],
         data=table_data,
         style_cell={"whiteSpace": "pre-line", "textAlign": "left"},
+        style_header={"fontWeight": "bold"},
         fill_width=False,
     )
     return header_table
@@ -155,6 +192,37 @@ def onExportButtonClicked(n_clicks):
     exportGraphs()
     return (None,)
 
+description_changed = False
+
+@callback(
+    [
+        Output("description-input", "style"),
+        Input("description-input", "value"),
+        Input("description-save", "n_clicks"),
+        State("description-input", "style"),
+        State("file-selection", "value"),
+    ],
+    prevent_initial_call=True,
+)
+def onDescriptionSaveClicked(description, n_clicks, description_style, path):
+    global description_changed
+    trigger_id = callback_context.triggered[0]["prop_id"].split(".")[0]
+    if trigger_id == "description-input":
+        if description_changed:
+            description_style["backgroundColor"] = "#fccfcf"
+        description_changed = True
+    elif trigger_id == "description-save":
+        with open(path, "r+") as file:
+            json_obj = json.load(file)
+            file.seek(0)
+            if not "metadata" in json_obj:
+                json_obj["metadata"] = {}
+            json_obj["metadata"]["description"] = description
+            json.dump(json_obj, file)
+            file.truncate()
+        description_style["backgroundColor"] = "white"
+    return (description_style,)
+
 
 @callback(
     [
@@ -163,6 +231,7 @@ def onExportButtonClicked(n_clicks):
         Output("graphs", "children"),
         Output("odrive-errors", "children"),
         Output("header", "children"),
+        Output("description-input", "value"),
         Input("file-selection", "value"),
     ]
 )
@@ -173,6 +242,7 @@ def onLogSelection(path):
     log_data = log_parser.loadJson(path)
     header = log_data.header
     df = log_data.df
+    description = log_data.description
 
     log_parser.postProcessLogData(log_data)
 
@@ -187,7 +257,9 @@ def onLogSelection(path):
 
     header_table = createHeaderTable(header)
 
-    return title, path, graphs, [odrive_error_table], header_table
+    global description_changed
+    description_changed = False
+    return title, path, graphs, [odrive_error_table], header_table, description
 
 
 if __name__ == "__main__":
