@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+output_path="generated_protos"
+if [ ! -d "$output_path" ]; then
+	mkdir $output_path
+fi
+protoc --python_out generated_protos --pyi_out generated_protos --proto_path PIER PIER/*.proto
+
+
+
