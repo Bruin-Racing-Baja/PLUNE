@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+output_path="generated_protos"
+
+mkdir -p $output_path
+protoc --python_out $output_path --pyi_out $output_path --proto_path PIER PIER/*.proto
+
+mkdir -p raw_logs logs graphs
