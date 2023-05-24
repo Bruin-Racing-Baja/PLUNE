@@ -4,8 +4,10 @@
       "x_axis": "control_cycle_start_s",
       "y_axis": [
         "engine_rpm",
+        "filtered_engine_rpm",
+        "target_rpm",
         "secondary_rpm",
-        "target_rpm"
+        "filtered_secondary_rpm"
       ],
       "title": "Engine, Secondary, Target RPM"
     },
@@ -14,7 +16,7 @@
       "y_axis": [
         "norm_engine_rpm",
         "norm_secondary_rpm",
-        "norm_actuator_position_mm"
+        "norm_actuator_position_inches"
       ],
       "title": "Normalized Engine/Secondary RPM, Actuator Position"
     },
@@ -22,7 +24,7 @@
       "x_axis": "control_cycle_start_s",
       "y_axis": [
         "norm_shift_ratio",
-        "norm_actuator_position_mm"
+        "norm_actuator_position_inches"
       ],
       "title": "Normalized Shift Ratio, Actuator Position"
     },
@@ -30,9 +32,9 @@
       "x_axis": "control_cycle_start_s",
       "y_axis": [
         "velocity_command",
-        "unclamped_velocity_command"
+        "velocity_estimate"
       ],
-      "title": "Velocity Command"
+      "title": "Actuator Velocity"
     },
     {
       "x_axis": "control_cycle_start_s",
@@ -44,25 +46,16 @@
     {
       "x_axis": "control_cycle_start_s",
       "y_axis": [
+        "actuator_position_inches"
+      ],
+      "title": "Actuator Position (inches)"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
         "wheel_mph"
       ],
       "title": "Vehicle Speed"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "vehicle_position_feet"
-      ],
-      "title": "Vehcile Position"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "engine_rpm",
-        "filtered_engine_rpm",
-        "engine_rpm_deriv_error"
-      ],
-      "title": "Controller Error"
     },
     {
       "x_axis": "control_cycle_start_s",
@@ -96,6 +89,25 @@
         "velocity_command"
       ],
       "title": "Velocities"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "norm_shadow_count",
+        "norm_secondary_rpm",
+        "norm_filtered_engine_rpm",
+        "norm_iq_measured",
+        "norm_velocity_estimate"
+      ],
+      "title": "Engage Finder"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "filtered_brake_light_signal",
+        "brake_light_signal"
+      ],
+      "title": "Brake Light Signal"
     }
   ]
 }

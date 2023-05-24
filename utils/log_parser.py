@@ -9,15 +9,22 @@ import pandas as pd
 import plotly.graph_objects as go
 from google.protobuf import json_format
 from google.protobuf import message as _message
+import scipy.signal
 
 from generated_protos import header_message_pb2, log_message_pb2
 
+pd.options.mode.chained_assignment = None 
 
 class MessageID(IntEnum):
     NONE = -1
     HEADER = 0
     LOG = 1
 
+pb2_messages = {
+    MessageID.NONE: None,
+    MessageID.HEADER: header_message_pb2.HeaderMessage,
+    MessageID.LOG: log_message_pb2.LogMessage,
+}
 
 class LogData:
     def __init__(
@@ -63,10 +70,7 @@ def nextDelimitedMessage(
     message_length = int(raw_message_length, 16)
 
     raw_message = buffer.read(message_length)
-    if message_id == MessageID.HEADER:
-        message = header_message_pb2.HeaderMessage()
-    elif message_id == MessageID.LOG:
-        message = log_message_pb2.LogMessage()
+    message = pb2_messages[message_id]()
     message.ParseFromString(raw_message)
 
     return message, message_id
@@ -111,6 +115,8 @@ def loadJson(filename: str, post_process=False) -> LogData:
 
 def dumpLogDataToJson(filename: str, log_data: LogData):
     # TODO speed this up
+    if os.path.isfile(filename):
+        return
     with open(filename, "w") as file:
         json_obj = {
             "header": json.loads(json_format.MessageToJson(log_data.header)),
@@ -159,15 +165,31 @@ def appendNormalizedSeries(df: pd.DataFrame) -> None:
                 )
 
 
+def trimDataframe(
+    df: pd.DataFrame, start_s: float = 0, end_s: float = float("inf")
+) -> pd.DataFrame:
+    df = df.loc[
+        (df["control_cycle_start_s"].gt(start_s))
+        & (df["control_cycle_start_s"].lt(end_s)),
+        :,
+    ]
+    return df
+
 def postProcessLogData(log_data: LogData):
     wheel_diameter = 23
-    pitch_angle = 5
+    pitch_angle = 3
     encoder_cpr = 8192
     wheel_to_secondary_ratio = (57 / 18) * (45 / 17)
     df = log_data.df
     df["control_cycle_start_s"] = df["control_cycle_start_us"] / 1e6
-    if "last_control_cycle_stop_us" in df.columns:
-        df["last_control_cycle_stop_s"] = df["last_control_cycle_stop_us"] / 1e6
+    diff = df['control_cycle_start_s'].diff()
+    
+    idxs = diff[diff < 0].index
+    for idx in idxs:
+        df["control_cycle_start_us"].iloc[idx:] += (2**32-1)
+        df["control_cycle_stop_us"].iloc[idx:] += (2**32-1)
+        df["control_cycle_start_s"].iloc[idx:] += (2**32-1) / 1e6
+
     df["control_cycle_dt_s"] = df["control_cycle_dt_us"] / 1e6
 
     df["secondary_rpm"] = df["wheel_rpm"] * wheel_to_secondary_ratio
@@ -177,21 +199,14 @@ def postProcessLogData(log_data: LogData):
         np.cumsum(df["wheel_mph"] * 5280 * df["control_cycle_dt_s"]) / 3600
     )
 
-    df["actuator_position_mm"] = -df["shadow_count"] / encoder_cpr * pitch_angle
+    df["actuator_position_inches"] = (
+        -df["shadow_count"] / encoder_cpr * pitch_angle / 2.54 / 10
+    )
 
     df["shift_ratio"] = df["secondary_rpm"] / df["engine_rpm"]
     df["shift_ratio"] = df["shift_ratio"].clip(lower=0.2, upper=2)
-
+    
     appendNormalizedSeries(df)
-
-
-def trimDataframe(
-    df: pd.DataFrame, start_s: float = 0, end_s: float = float("inf")
-) -> pd.DataFrame:
-    df = df.loc[
-        (start_s < df["control_cycle_start_s"]) & (df["control_cycle_start_s"] < end_s)
-    ]
-    return df
 
 
 def figuresToHTML(
