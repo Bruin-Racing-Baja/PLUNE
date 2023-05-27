@@ -12,6 +12,7 @@ from google.protobuf import message as _message
 import scipy.signal
 
 from generated_protos import header_message_pb2, log_message_pb2
+from utils import low_latency_filter
 
 pd.options.mode.chained_assignment = None 
 
@@ -206,6 +207,12 @@ def postProcessLogData(log_data: LogData):
     df["shift_ratio"] = df["secondary_rpm"] / df["engine_rpm"]
     df["shift_ratio"] = df["shift_ratio"].clip(lower=0.2, upper=2)
     
+    alpha = .5
+    beta = .5
+    buffer = 2
+    ultra_low = low_latency_filter.UltraLowLatencyFilter(alpha, beta, buffer)
+
+    df['engine_rpm_python_low_latency_filter'] = df.apply(lambda row: ultra_low.filter(row['engine_rpm'], row['control_cycle_start_us']), axis=1)
     appendNormalizedSeries(df)
 
 

@@ -5,6 +5,7 @@
       "y_axis": [
         "engine_rpm",
         "filtered_engine_rpm",
+        "engine_rpm_python_low_latency_filter",
         "target_rpm",
         "secondary_rpm",
         "filtered_secondary_rpm"
