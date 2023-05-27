@@ -280,10 +280,12 @@ if __name__ == "__main__":
     elif args.convert:
         num_paths = len(raw_paths)
         for n, raw_path in enumerate(raw_paths):
-            log_data = log_parser.loadBinary(raw_path)
             file_ext = os.path.splitext(raw_path)[1]
             filename = os.path.splitext(os.path.basename(raw_path))[0]
             json_path = os.path.join(json_log_dir, f"{filename}.json")
+            if os.path.isfile(json_path):
+                continue
+            log_data = log_parser.loadBinary(raw_path)
             print(f"Converting ({n+1}/{num_paths}): {raw_path} -> {json_path}")
             log_parser.dumpLogDataToJson(json_path, log_data)
     else:

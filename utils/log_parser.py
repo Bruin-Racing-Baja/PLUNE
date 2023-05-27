@@ -115,8 +115,6 @@ def loadJson(filename: str, post_process=False) -> LogData:
 
 def dumpLogDataToJson(filename: str, log_data: LogData):
     # TODO speed this up
-    if os.path.isfile(filename):
-        return
     with open(filename, "w") as file:
         json_obj = {
             "header": json.loads(json_format.MessageToJson(log_data.header)),
@@ -205,6 +203,7 @@ def postProcessLogData(log_data: LogData):
 
     df["shift_ratio"] = df["secondary_rpm"] / df["engine_rpm"]
     df["shift_ratio"] = df["shift_ratio"].clip(lower=0.2, upper=2)
+    #df["dt"] = df["control_cycle_start_us"].diff()-20e3
     
     appendNormalizedSeries(df)
 
