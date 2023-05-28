@@ -14,18 +14,21 @@ import scipy.signal
 from generated_protos import header_message_pb2, log_message_pb2
 from utils import low_latency_filter
 
-pd.options.mode.chained_assignment = None 
+pd.options.mode.chained_assignment = None
+
 
 class MessageID(IntEnum):
     NONE = -1
     HEADER = 0
     LOG = 1
 
+
 pb2_messages = {
     MessageID.NONE: None,
     MessageID.HEADER: header_message_pb2.HeaderMessage,
     MessageID.LOG: log_message_pb2.LogMessage,
 }
+
 
 class LogData:
     def __init__(
@@ -116,8 +119,6 @@ def loadJson(filename: str, post_process=False) -> LogData:
 
 def dumpLogDataToJson(filename: str, log_data: LogData):
     # TODO speed this up
-    if os.path.isfile(filename):
-        return
     with open(filename, "w") as file:
         json_obj = {
             "header": json.loads(json_format.MessageToJson(log_data.header)),
@@ -176,6 +177,7 @@ def trimDataframe(
     ]
     return df
 
+
 def postProcessLogData(log_data: LogData):
     wheel_diameter = 23
     pitch_angle = 3
@@ -183,13 +185,13 @@ def postProcessLogData(log_data: LogData):
     wheel_to_secondary_ratio = (57 / 18) * (45 / 17)
     df = log_data.df
     df["control_cycle_start_s"] = df["control_cycle_start_us"] / 1e6
-    diff = df['control_cycle_start_s'].diff()
-    
+    diff = df["control_cycle_start_s"].diff()
+
     idxs = diff[diff < 0].index
     for idx in idxs:
-        df["control_cycle_start_us"].iloc[idx:] += (2**32-1)
-        df["control_cycle_stop_us"].iloc[idx:] += (2**32-1)
-        df["control_cycle_start_s"].iloc[idx:] += (2**32-1) / 1e6
+        df["control_cycle_start_us"].iloc[idx:] += 2**32 - 1
+        df["control_cycle_stop_us"].iloc[idx:] += 2**32 - 1
+        df["control_cycle_start_s"].iloc[idx:] += (2**32 - 1) / 1e6
 
     df["control_cycle_dt_s"] = df["control_cycle_dt_us"] / 1e6
 
@@ -206,16 +208,17 @@ def postProcessLogData(log_data: LogData):
 
     df["shift_ratio"] = df["secondary_rpm"] / df["engine_rpm"]
     df["shift_ratio"] = df["shift_ratio"].clip(lower=0.2, upper=2)
-    
-    alpha = .5
-    beta = .5
-    buffer = 2
+    # df["dt"] = df["control_cycle_start_us"].diff()-20e3
+
+    alpha = 0.75
+    beta = 0.5
+    buffer = 5
     ultra_low = low_latency_filter.UltraLowLatencyFilter(alpha, beta, buffer)
 
-    df['engine_rpm_python_low_latency_filter'] = df.apply(lambda row: ultra_low.filter(row['engine_rpm'], row['control_cycle_start_us']), axis=1)
-    
-    
-    df["control_cycle_execution_time_us"] = (df["control_cycle_stop_us"].shift(-1)) - df["control_cycle_start_us"]
+    df["engine_rpm_python_low_latency_filter"] = df.apply(
+        lambda row: ultra_low.filter(row["engine_rpm"], row["control_cycle_start_us"]),
+        axis=1,
+    )
     appendNormalizedSeries(df)
 
 
