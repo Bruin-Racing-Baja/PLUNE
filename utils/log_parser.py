@@ -213,6 +213,9 @@ def postProcessLogData(log_data: LogData):
     ultra_low = low_latency_filter.UltraLowLatencyFilter(alpha, beta, buffer)
 
     df['engine_rpm_python_low_latency_filter'] = df.apply(lambda row: ultra_low.filter(row['engine_rpm'], row['control_cycle_start_us']), axis=1)
+    
+    
+    df["control_cycle_execution_time_us"] = (df["control_cycle_stop_us"].shift(-1)) - df["control_cycle_start_us"]
     appendNormalizedSeries(df)
 
 

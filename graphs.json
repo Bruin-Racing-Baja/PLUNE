@@ -109,6 +109,13 @@
         "brake_light_signal"
       ],
       "title": "Brake Light Signal"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "control_cycle_execution_time_us"
+      ],
+      "title": "cycle time"
     }
   ]
 }
