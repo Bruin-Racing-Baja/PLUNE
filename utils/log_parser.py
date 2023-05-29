@@ -210,15 +210,38 @@ def postProcessLogData(log_data: LogData):
     df["shift_ratio"] = df["shift_ratio"].clip(lower=0.2, upper=2)
     # df["dt"] = df["control_cycle_start_us"].diff()-20e3
 
-    alpha = 0.75
-    beta = 0.5
-    buffer = 5
+    alpha = .6
+    beta = .1
+    buffer = 3
     ultra_low = low_latency_filter.UltraLowLatencyFilter(alpha, beta, buffer)
 
     df["engine_rpm_python_low_latency_filter"] = df.apply(
         lambda row: ultra_low.filter(row["engine_rpm"], row["control_cycle_start_us"]),
         axis=1,
     )
+
+    alpha_deriv = .6
+    beta_deriv = .1
+    buffer_deriv = 34
+    ultra_low_deriv = low_latency_filter.UltraLowLatencyFilter(alpha_deriv, beta_deriv, buffer_deriv)
+    df["engine_rpm_python_low_latency_filter_deriv"] = df.apply(
+        lambda row: ultra_low_deriv.filter(row["engine_rpm"], row["control_cycle_start_us"]),
+        axis=1,
+    )
+
+    df["engine_rpm_error_python_filtered"] = df["target_rpm"] - df["engine_rpm_python_low_latency_filter"]
+    df["engine_rpm_error_python_filtered_deriv"] =  df["target_rpm"] - df["engine_rpm_python_low_latency_filter_deriv"]
+    df["engine_rpm_deriv_error_python_filtered"] = (df["engine_rpm_error_python_filtered_deriv"].diff()) / df["control_cycle_dt_s"]
+
+    p = .05
+    d = .4
+
+    df["simulated_vel_command_p"] = p*(df["engine_rpm_error_python_filtered"])                                      
+    df["simulated_vel_command_d"] = p*d*df["engine_rpm_deriv_error_python_filtered"]
+    df["simulated_vel_command"] = df["simulated_vel_command_p"] + df["simulated_vel_command_d"]
+
+    df["control_cycle_execution_time_us"] = (df["control_cycle_stop_us"].shift(-1)) - df["control_cycle_start_us"]
+
     appendNormalizedSeries(df)
 
 
