@@ -6,6 +6,7 @@
         "engine_rpm",
         "filtered_engine_rpm",
         "engine_rpm_python_low_latency_filter",
+        "engine_rpm_python_low_latency_filter_deriv",
         "target_rpm",
         "secondary_rpm",
         "filtered_secondary_rpm"
@@ -111,11 +112,35 @@
       "title": "Brake Light Signal"
     },
     {
-      "x_axis": "control_cycle_start_s",
+      "x_axis": "control_cycle_start_us",
       "y_axis": [
         "control_cycle_execution_time_us"
       ],
       "title": "cycle time"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "engine_rpm_deriv_error_python_filtered"
+      ],
+      "title": "filtered derivative estimator"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "simulated_vel_command_p",
+        "simulated_vel_command_d",
+        "simulated_vel_command"
+      ],
+      "title": "simulated vel_command"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "inbound_estop",
+        "outbound_estop"
+      ],
+      "title": "ESTOPS"
     }
   ]
 }
