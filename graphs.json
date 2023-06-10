@@ -5,8 +5,6 @@
       "y_axis": [
         "engine_rpm",
         "filtered_engine_rpm",
-        "engine_rpm_python_low_latency_filter",
-        "engine_rpm_python_low_latency_filter_deriv",
         "target_rpm",
         "secondary_rpm",
         "filtered_secondary_rpm"
@@ -25,32 +23,56 @@
     {
       "x_axis": "control_cycle_start_s",
       "y_axis": [
-        "norm_shift_ratio",
-        "norm_actuator_position_inches"
-      ],
-      "title": "Normalized Shift Ratio, Actuator Position"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "velocity_command",
-        "velocity_estimate"
-      ],
-      "title": "Actuator Velocity"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "shadow_count"
-      ],
-      "title": "Shadow Count"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "actuator_position_inches"
+        "actuator_position_inches",
+        "norm_inbound_estop",
+        "norm_outbound_estop"
       ],
       "title": "Actuator Position (inches)"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "norm_velocity_command",
+        "norm_velocity_estimate",
+        "norm_inbound_estop",
+        "norm_outbound_estop"
+      ],
+      "title": "Normalized Actuator Velocity, Estops"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "velocity_estimate",
+        "velocity_command"
+      ],
+      "title": "Actuator Velocities"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "norm_velocity_command",
+        "norm_velocity_estimate",
+        "norm_shadow_count"
+      ],
+      "title": "Normalzied Actuator Velocity, Shadow Count"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "voltage",
+        "iq_measured"
+      ],
+      "title": "Voltage, Current"
+    },
+    {
+      "x_axis": "control_cycle_start_s",
+      "y_axis": [
+        "simulated_velocity_command_p",
+        "simulated_velocity_command_d",
+        "simulated_velocity_command",
+        "velocity_command"
+      ],
+      "title": "Simulated Controller"
     },
     {
       "x_axis": "control_cycle_start_s",
@@ -62,85 +84,25 @@
     {
       "x_axis": "control_cycle_start_s",
       "y_axis": [
-        "voltage",
-        "iq_measured"
-      ],
-      "title": "Voltage and Current"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "norm_engine_rpm",
-        "norm_velocity_estimate",
-        "norm_velocity_command"
-      ],
-      "title": "Normalized Engine RPM, Velocity Estimate/Command"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
         "norm_brake_light_signal",
-        "norm_engine_rpm"
-      ],
-      "title": "Normalized Brake Light Signal, Engine RPM"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "velocity_estimate",
-        "velocity_command"
-      ],
-      "title": "Velocities"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "norm_shadow_count",
-        "norm_secondary_rpm",
-        "norm_filtered_engine_rpm",
-        "norm_iq_measured",
-        "norm_velocity_estimate"
-      ],
-      "title": "Engage Finder"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "filtered_brake_light_signal",
-        "brake_light_signal"
+        "norm_filtered_brake_light_signal",
+        "norm_brake_pressed"
       ],
       "title": "Brake Light Signal"
     },
     {
-      "x_axis": "control_cycle_start_us",
+      "x_axis": "control_cycle_start_s",
       "y_axis": [
         "control_cycle_execution_time_us"
       ],
-      "title": "cycle time"
+      "title": "Cycle Execution Time (us)"
     },
     {
       "x_axis": "control_cycle_start_s",
       "y_axis": [
-        "engine_rpm_deriv_error_python_filtered"
+        "shift_ratio"
       ],
-      "title": "filtered derivative estimator"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "simulated_vel_command_p",
-        "simulated_vel_command_d",
-        "simulated_vel_command"
-      ],
-      "title": "simulated vel_command"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "inbound_estop",
-        "outbound_estop"
-      ],
-      "title": "ESTOPS"
+      "title": "Shift Ratio"
     }
   ]
 }

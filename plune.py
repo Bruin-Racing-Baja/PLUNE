@@ -266,6 +266,7 @@ def onLogSelection(path):
 
 
 if __name__ == "__main__":
+    # hi cal poly slo
     parser = argparse.ArgumentParser(description="PLotting Utility N Exporter")
 
     parser.add_argument(
