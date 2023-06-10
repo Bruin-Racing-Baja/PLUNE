@@ -158,6 +158,15 @@ def appendNormalizedSeries(df: pd.DataFrame) -> None:
         if col.startswith("norm_") or col_norm in df:
             continue
         cur_series = df[col]
+        if np.issubdtype(cur_series.dtype, bool):
+            values = cur_series.values.astype(int)
+            if np.max(values) == np.min(values):
+                df[col_norm] = 0.0
+            else:
+                df[col_norm] = (values - np.min(values)) / (
+                    np.max(values) - np.min(values)
+                )
+
         if np.issubdtype(cur_series.dtype, np.number):
             if np.max(cur_series) == np.min(cur_series):
                 df[col_norm] = 0.0
@@ -180,7 +189,8 @@ def trimDataframe(
 
 def postProcessLogData(log_data: LogData):
     wheel_diameter = 23
-    pitch_angle = 3
+    pitch_angle = 2
+    actuator_belt_ratio = 1.5  # ballscrew:motor
     encoder_cpr = 8192
     wheel_to_secondary_ratio = (57 / 18) * (45 / 17)
     df = log_data.df
@@ -195,52 +205,44 @@ def postProcessLogData(log_data: LogData):
 
     df["control_cycle_dt_s"] = df["control_cycle_dt_us"] / 1e6
 
+    log_data.df = trimDataframe(df, 5.5)
+    df = log_data.df
+
     df["secondary_rpm"] = df["wheel_rpm"] * wheel_to_secondary_ratio
     df["wheel_mph"] = (df["wheel_rpm"] * wheel_diameter * np.pi) / (12 * 5280) * 60
+    b, a = scipy.signal.butter(12, 1.2, fs=50)
+    df["wheel_mph"] = scipy.signal.filtfilt(b, a, df["wheel_mph"])
 
     df["vehicle_position_feet"] = (
         np.cumsum(df["wheel_mph"] * 5280 * df["control_cycle_dt_s"]) / 3600
     )
 
     df["actuator_position_inches"] = (
-        -df["shadow_count"] / encoder_cpr * pitch_angle / 2.54 / 10
+        -df["shadow_count"]
+        / encoder_cpr
+        * pitch_angle
+        * actuator_belt_ratio
+        / 2.54
+        / 10
     )
+    df["motor_position_rot"] = df["shadow_count"] / encoder_cpr
 
-    df["shift_ratio"] = df["secondary_rpm"] / df["engine_rpm"]
+    df["shift_ratio"] = df["filtered_engine_rpm"] / df["filtered_secondary_rpm"]
     df["shift_ratio"] = df["shift_ratio"].clip(lower=0.2, upper=2)
-    # df["dt"] = df["control_cycle_start_us"].diff()-20e3
 
-    alpha = .6
-    beta = .1
-    buffer = 3
-    ultra_low = low_latency_filter.UltraLowLatencyFilter(alpha, beta, buffer)
+    p = 0.04
+    d = 0.002
 
-    df["engine_rpm_python_low_latency_filter"] = df.apply(
-        lambda row: ultra_low.filter(row["engine_rpm"], row["control_cycle_start_us"]),
-        axis=1,
+    df["simulated_velocity_command_p"] = p * (df["target_rpm"] - df["engine_rpm"])
+    df["simulated_velocity_command_d"] = np.maximum(d * df["engine_rpm_deriv_error"], 0)
+
+    df["simulated_velocity_command"] = (
+        df["simulated_velocity_command_p"] + df["simulated_velocity_command_d"]
     )
 
-    alpha_deriv = .6
-    beta_deriv = .1
-    buffer_deriv = 34
-    ultra_low_deriv = low_latency_filter.UltraLowLatencyFilter(alpha_deriv, beta_deriv, buffer_deriv)
-    df["engine_rpm_python_low_latency_filter_deriv"] = df.apply(
-        lambda row: ultra_low_deriv.filter(row["engine_rpm"], row["control_cycle_start_us"]),
-        axis=1,
-    )
-
-    df["engine_rpm_error_python_filtered"] = df["target_rpm"] - df["engine_rpm_python_low_latency_filter"]
-    df["engine_rpm_error_python_filtered_deriv"] =  df["target_rpm"] - df["engine_rpm_python_low_latency_filter_deriv"]
-    df["engine_rpm_deriv_error_python_filtered"] = (df["engine_rpm_error_python_filtered_deriv"].diff()) / df["control_cycle_dt_s"]
-
-    p = .05
-    d = .4
-
-    df["simulated_vel_command_p"] = p*(df["engine_rpm_error_python_filtered"])                                      
-    df["simulated_vel_command_d"] = p*d*df["engine_rpm_deriv_error_python_filtered"]
-    df["simulated_vel_command"] = df["simulated_vel_command_p"] + df["simulated_vel_command_d"]
-
-    df["control_cycle_execution_time_us"] = (df["control_cycle_stop_us"].shift(-1)) - df["control_cycle_start_us"]
+    df["control_cycle_execution_time_us"] = (
+        df["control_cycle_stop_us"].shift(-1)
+    ) - df["control_cycle_start_us"]
 
     appendNormalizedSeries(df)
 
@@ -285,6 +287,8 @@ def createFigures(graph_info_json: dict, log_data: LogData) -> List[go.Figure]:
     df = log_data.df
     figures = []
     for graph_info in graph_info_json["figures"]:
+        if graph_info.get("disabled", False):
+            continue
         if not set(graph_info["y_axis"]).issubset(df.columns):
             print(f'Column(s) Missing: Skipping "{graph_info["title"]}"')
             continue
