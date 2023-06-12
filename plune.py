@@ -23,6 +23,7 @@ from google.protobuf import json_format
 
 from generated_protos import header_message_pb2
 from utils import log_parser, odrive_utils
+from header import header_layout
 
 raw_log_dir = "raw_logs"
 json_log_dir = "logs"
@@ -35,88 +36,14 @@ raw_paths = log_parser.getFilesByExtension(raw_log_dir, "bin")
 json_paths = log_parser.getFilesByExtension(json_log_dir, "json")
 
 
-app = Dash(__name__)
+import dash_bootstrap_components as dbc
+
+app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+
 
 app.layout = html.Div(
     [
-        dcc.Loading(
-            id="title-loading",
-            children=html.Div(
-                children=[
-                    html.H1(
-                        children="Loading...", style={"textAlign": "center"}, id="title"
-                    ),
-                    html.H4(
-                        children="Loading...",
-                        style={"textAlign": "center"},
-                        id="subtitle",
-                    ),
-                ]
-            ),
-        ),
-        dcc.Loading(
-            id="export-loading",
-            children=[
-                html.Div(
-                    [
-                        html.Div(id="export-loading-spinner"),
-                    ]
-                )
-            ],
-            type="cube",
-        ),
-        dcc.Dropdown(
-            json_paths,
-            json_paths[-1] if len(json_paths) > 0 else None,
-            id="file-selection",
-            style={"width": "50%"},
-        ),
-        html.Button(
-            "EXPORT GRAPHS",
-            id="export-graphs",
-            style={
-                "width": "160px",
-                "height": "36px",
-                "cursor": "pointer",
-                "border": "1px solid #cccccc",
-                "border-radius": "5px",
-                "background-color": "white",
-                "color": "black",
-            },
-        ),
-        html.Div(
-            [
-                dcc.Textarea(
-                    id="description-input",
-                    style={
-                        "width": "350px",
-                        "height": "150px",
-                    },
-                ),
-                html.Button(
-                    "💾",
-                    id="description-save",
-                    style={
-                        "width": "36px",
-                        "height": "36px",
-                        "cursor": "pointer",
-                        "border": "1px solid #cccccc",
-                        "border-radius": "5px",
-                        "background-color": "#eeeeee",
-                        "color": "black",
-                    },
-                ),
-                html.Div(
-                    dash_table.DataTable(),
-                    id="header",
-                ),
-                html.Div(
-                    dash_table.DataTable(),
-                    id="odrive-errors",
-                ),
-            ],
-            style={"display": "flex", "flex-direction": "row"},
-        ),
+        html.Div(id="header", children=header_layout),
         html.Div(
             [],
             id="graphs",
@@ -160,9 +87,6 @@ def createODriveErrorTable(df: pd.DataFrame) -> dash_table.DataTable:
             {"name": "ODRIVE ERRORS", "id": "errors"},
         ],
         data=odrive_error_rows,
-        style_cell={"whiteSpace": "pre-line", "textAlign": "left"},
-        style_header={"backgroundColor": "#ff9999", "fontWeight": "bold"},
-        fill_width=False,
     )
     return odrive_error_table
 
@@ -178,13 +102,11 @@ def createHeaderTable(header: header_message_pb2.HeaderMessage) -> dash_table.Da
             {"name": "VALUE", "id": "value"},
         ],
         data=table_data,
-        style_cell={"whiteSpace": "pre-line", "textAlign": "left"},
-        style_header={"fontWeight": "bold"},
-        fill_width=False,
     )
     return header_table
 
 
+"""
 @callback(
     [Output("export-loading-spinner", "children"), Input("export-graphs", "n_clicks")],
     prevent_initial_call=True,
@@ -192,7 +114,7 @@ def createHeaderTable(header: header_message_pb2.HeaderMessage) -> dash_table.Da
 def onExportButtonClicked(n_clicks):
     exportGraphs()
     return (None,)
-
+"""
 
 description_changed = False
 
@@ -230,10 +152,9 @@ def onDescriptionSaveClicked(description, n_clicks, description_style, path):
 @callback(
     [
         Output("title", "children"),
-        Output("subtitle", "children"),
         Output("graphs", "children"),
         Output("odrive-errors", "children"),
-        Output("header", "children"),
+        Output("log-header", "children"),
         Output("description-input", "value"),
         Input("file-selection", "value"),
     ]
@@ -262,7 +183,7 @@ def onLogSelection(path):
 
     global description_changed
     description_changed = False
-    return title, path, graphs, [odrive_error_table], header_table, description
+    return title, graphs, [odrive_error_table], header_table, description
 
 
 if __name__ == "__main__":

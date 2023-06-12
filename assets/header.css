@@ -1,0 +1,17 @@
+#header{
+    display:flex;
+    flex-wrap: wrap;
+    flex-direction: column;
+}
+
+#header-data-container{
+    display: flex;
+    justify-content: space-around;
+}
+#description-container{
+    display: flex;
+    flex-direction: column;
+}
+#description-input{
+    resize: both;
+}
