@@ -2,12 +2,14 @@
 import argparse
 import json
 import os
-from typing import List
-import numpy as np
+from typing import List, Tuple
+from uuid import uuid4
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from dash import (
+    callback_context,
     Dash,
     Input,
     Output,
@@ -19,11 +21,20 @@ from dash import (
     html,
     no_update,
 )
+from dash.dependencies import ALL, MATCH
+from dash_extensions.enrich import (
+    DashProxy,
+    NoOutputTransform,
+    Serverside,
+    ServersideOutputTransform,
+    Trigger,
+    TriggerTransform,
+)
 from google.protobuf import json_format
+from trace_updater import TraceUpdater
 
-from generated_protos import header_message_pb2
 from utils import log_parser, odrive_utils
-from header import header_layout
+from plotly_resampler import FigureResampler
 
 raw_log_dir = "raw_logs"
 json_log_dir = "logs"
@@ -38,28 +49,197 @@ json_paths = log_parser.getFilesByExtension(json_log_dir, "json")
 
 import dash_bootstrap_components as dbc
 
-app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-
-
-app.layout = html.Div(
-    [
-        html.Div(id="header", children=header_layout),
-        html.Div(
-            [],
-            id="graphs",
-        ),
-    ]
+app = DashProxy(
+    __name__,
+    suppress_callback_exceptions=True,
+    external_stylesheets=[dbc.themes.BOOTSTRAP],
+    transforms=[ServersideOutputTransform(), TriggerTransform(), NoOutputTransform()],
 )
 
 
-def exportGraphs() -> None:
-    num_paths = len(json_paths)
-    for n, json_path in enumerate(json_paths):
-        log_data = log_parser.loadJson(json_path, post_process=True)
-        filename = os.path.splitext(os.path.basename(json_path))[0]
-        html_path = os.path.join(export_dir, f"{filename}.html")
-        print(f"Exporting ({n+1}/{num_paths}): {json_path} -> {html_path}")
-        log_parser.dumpLogDataToHTML(html_path, graph_info_json, log_data)
+def serveLayout():
+    with open(graph_info_file, "r") as file:
+        graph_info_json = json.loads(file.read())
+    json_paths = log_parser.getFilesByExtension(json_log_dir, "json")
+    header_layout = [
+        # Page title
+        html.Div(
+            id="title-container",
+            children=[
+                html.H1(
+                    id="title",
+                    children="Loading...",
+                ),
+            ],
+        ),
+        # File selection
+        html.Div(
+            id="file-selection-container",
+            children=dcc.Dropdown(
+                id="file-selection",
+                options=json_paths,
+                value=json_paths[-1] if len(json_paths) > 0 else None,
+            ),
+        ),
+        # Data
+        html.Div(
+            id="header-data-container",
+            children=[
+                html.Div(
+                    id="description-container",
+                    children=[
+                        dbc.Textarea(
+                            id="description-input",
+                        ),
+                        dbc.Button(
+                            "💾",
+                            id="description-save",
+                        ),
+                    ],
+                ),
+                dbc.Table(id="log-header-table"),
+                html.Div(
+                    dash_table.DataTable(),
+                    id="odrive-errors",
+                ),
+            ],
+        ),
+    ]
+
+    return html.Div(
+        [
+            dcc.Store(id="graph-info", data=graph_info_json),
+            html.Div(id="header", children=header_layout),
+            dcc.Store(id="graph-ready", data=False),
+            dcc.Store(id="graph-data-ready"),
+            dcc.Store(id="graph-data"),
+            html.Div(
+                id="graph-container",
+            ),
+        ]
+    )
+
+
+app.layout = serveLayout()
+
+
+@app.callback(
+    Output({"type": "store", "uid": MATCH}, "data"),
+    Output({"type": "dynamic-graph", "uid": MATCH}, "figure"),
+    Trigger({"type": "interval", "uid": MATCH, "index": ALL}, "n_intervals"),
+    State({"type": "interval", "uid": MATCH, "index": ALL}, "id"),
+    State("graph-data", "data"),
+    State("graph-info", "data"),
+    prevent_initial_call=True,
+)
+def constructGraphs(interval_id, data,graph_info_json) -> FigureResampler:
+    idx = int(interval_id[0]["index"])
+    df = data
+    graph_info = graph_info_json["figures"][idx]
+    if graph_info.get("disabled", False):
+        return (None), (None)
+    print("ONE",idx)
+
+    fig = FigureResampler(go.Figure(), default_n_shown_samples=2_000)
+
+    print("TWO",idx)
+    if not set(graph_info["y_axis"]).issubset(df.columns):
+        print(graph_info,"HELLO",df.columns)
+        print(f'Column(s) Missing: Skipping "{graph_info["title"]}"')
+        return (None), (None)
+
+    for y_axis in graph_info["y_axis"]:
+        fig.add_trace(
+            go.Scattergl(name=y_axis),
+            hf_x=df[graph_info["x_axis"]],
+            hf_y=df[y_axis],
+        )
+
+    fig.update_layout(
+        title=graph_info["title"],
+        xaxis_title=graph_info["x_axis"],
+        showlegend=True,
+        margin=dict(l=20, r=20, t=60, b=20),
+    )
+    return Serverside(fig), fig
+
+
+@app.callback(
+    Output({"type": "dynamic-updater", "uid": MATCH}, "updateData"),
+    Input({"type": "dynamic-graph", "uid": MATCH}, "relayoutData"),
+    State({"type": "store", "uid": MATCH}, "data"),
+    prevent_initial_call=True,
+    memoize=True,
+)
+def update_fig(relayoutdata: dict, fig: FigureResampler):
+    if fig is not None:
+        return fig.construct_update_data(relayoutdata)
+    return no_update
+
+
+@app.callback(
+    Output("title", "children"),
+    Output("odrive-errors", "children"),
+    Output("log-header-table", "children"),
+    Output("description-input", "value"),
+    Output("graph-data", "data"),
+    Output("graph-container", "children"),
+    Input("graph-info", "data"),
+    Input("file-selection", "value")
+)
+def onGraphInfoChanged(data, path):
+    dynamic_graphs = []
+    for idx in range(len(data["figures"])):
+        uid = str(uuid4())
+        dynamic_graphs.append(
+            html.Div(
+                children=[
+                    dcc.Graph(id={"type": "dynamic-graph", "uid": uid}),
+                    dcc.Loading(dcc.Store(id={"type": "store", "uid": uid})),
+                    TraceUpdater(
+                        id={"type": "dynamic-updater", "uid": uid}, gdID=f"{uid}"
+                    ),
+                    dcc.Interval(
+                        id={"type": "interval", "uid": uid, "index": str(idx)},
+                        max_intervals=1,
+                        interval=1,
+                    ),
+                ],
+            )
+        )
+    if path == None:
+        return no_update
+
+    log_data = log_parser.loadJson(path)
+    header = log_data.header
+    df = log_data.df
+    description = log_data.description
+    # TODO: the header, description, and ODrive errors can all be in their own store
+
+    log_parser.postProcessLogData(log_data)
+    
+
+    title = log_data.header.timestamp_human
+    if title == "":
+        title = "Timestamp Missing"
+
+    uid = str(uuid4())
+
+    odrive_error_table = createODriveErrorTable(df)
+
+    header_table_data = json_format.MessageToDict(header)
+    header_table = dictToTable(("Constant", "Value"), header_table_data)
+
+    global description_changed
+    description_changed = False
+    return (
+        title,
+        [odrive_error_table],
+        header_table,
+        description,
+        Serverside(log_data.df),
+        dynamic_graphs
+    )
 
 
 def createODriveErrorTable(df: pd.DataFrame) -> dash_table.DataTable:
@@ -91,99 +271,20 @@ def createODriveErrorTable(df: pd.DataFrame) -> dash_table.DataTable:
     return odrive_error_table
 
 
-def createHeaderTable(header: header_message_pb2.HeaderMessage) -> dash_table.DataTable:
-    table_data = [
-        {"constant": field.name, "value": getattr(header, field.name)}
-        for field in header_message_pb2.HeaderMessage.DESCRIPTOR.fields
+def dictToTable(header: Tuple[str, str], data: dict) -> list:
+    table_header = [html.Thead(html.Tr([html.Th(head) for head in header]))]
+    table_rows = [
+        html.Tr([html.Td(key), html.Td(value)]) for key, value in data.items()
     ]
-    header_table = dash_table.DataTable(
-        columns=[
-            {"name": "CONSTANT", "id": "constant"},
-            {"name": "VALUE", "id": "value"},
-        ],
-        data=table_data,
-    )
-    return header_table
+    table_body = [html.Tbody(table_rows)]
+    return table_header + table_body
 
-
-"""
-@callback(
-    [Output("export-loading-spinner", "children"), Input("export-graphs", "n_clicks")],
-    prevent_initial_call=True,
-)
-def onExportButtonClicked(n_clicks):
-    exportGraphs()
-    return (None,)
-"""
 
 description_changed = False
 
 
-@callback(
-    [
-        Output("description-input", "style"),
-        Input("description-input", "value"),
-        Input("description-save", "n_clicks"),
-        State("description-input", "style"),
-        State("file-selection", "value"),
-    ],
-    prevent_initial_call=True,
-)
-def onDescriptionSaveClicked(description, n_clicks, description_style, path):
-    global description_changed
-    trigger_id = callback_context.triggered[0]["prop_id"].split(".")[0]
-    if trigger_id == "description-input":
-        if description_changed:
-            description_style["backgroundColor"] = "#fccfcf"
-        description_changed = True
-    elif trigger_id == "description-save":
-        with open(path, "r+") as file:
-            json_obj = json.load(file)
-            file.seek(0)
-            if not "metadata" in json_obj:
-                json_obj["metadata"] = {}
-            json_obj["metadata"]["description"] = description
-            json.dump(json_obj, file)
-            file.truncate()
-        description_style["backgroundColor"] = "white"
-    return (description_style,)
-
-
-@callback(
-    [
-        Output("title", "children"),
-        Output("graphs", "children"),
-        Output("odrive-errors", "children"),
-        Output("log-header", "children"),
-        Output("description-input", "value"),
-        Input("file-selection", "value"),
-    ]
-)
-def onLogSelection(path):
-    if path == None:
-        return no_update
-
-    log_data = log_parser.loadJson(path)
-    header = log_data.header
-    df = log_data.df
-    description = log_data.description
-
-    log_parser.postProcessLogData(log_data)
-
-    title = log_data.header.timestamp_human
-    if title == "":
-        title = "Timestamp Missing"
-
-    figures = log_parser.createFigures(graph_info_json, log_data)
-    graphs = [dcc.Graph(figure=fig) for fig in figures]
-
-    odrive_error_table = createODriveErrorTable(df)
-
-    header_table = createHeaderTable(header)
-
-    global description_changed
-    description_changed = False
-    return title, graphs, [odrive_error_table], header_table, description
+def exportGraphs():
+    pass
 
 
 if __name__ == "__main__":
@@ -234,3 +335,52 @@ if __name__ == "__main__":
                 print(raw_path)
     else:
         app.run_server(debug=True)
+
+"""
+@callback(
+    [Output("export-loading-spinner", "children"), Input("export-graphs", "n_clicks")],
+    prevent_initial_call=True,
+)
+def onExportButtonClicked(n_clicks):
+    exportGraphs()
+    return (None,)
+
+@callback(
+    [
+        Output("description-input", "style"),
+        Input("description-input", "value"),
+        Input("description-save", "n_clicks"),
+        State("description-input", "style"),
+        State("file-selection", "value"),
+    ],
+    prevent_initial_call=True,
+)
+def onDescriptionSaveClicked(description, n_clicks, description_style, path):
+    global description_changed
+    trigger_id = callback_context.triggered[0]["prop_id"].split(".")[0]
+    if trigger_id == "description-input":
+        if description_changed:
+            description_style["backgroundColor"] = "#fccfcf"
+        description_changed = True
+    elif trigger_id == "description-save":
+        with open(path, "r+") as file:
+            json_obj = json.load(file)
+            file.seek(0)
+            if not "metadata" in json_obj:
+                json_obj["metadata"] = {}
+            json_obj["metadata"]["description"] = description
+            json.dump(json_obj, file)
+            file.truncate()
+        description_style["backgroundColor"] = "white"
+    return (description_style,)
+
+
+def exportGraphs() -> None:
+    num_paths = len(json_paths)
+    for n, json_path in enumerate(json_paths):
+        log_data = log_parser.loadJson(json_path, post_process=True)
+        filename = os.path.splitext(os.path.basename(json_path))[0]
+        html_path = os.path.join(export_dir, f"{filename}.html")
+        print(f"Exporting ({n+1}/{num_paths}): {json_path} -> {html_path}")
+        log_parser.dumpLogDataToHTML(html_path, graph_info_json, log_data)
+"""
