@@ -1,18 +1,18 @@
 import io
 import json
 import os
+import tarfile
 from enum import IntEnum
 from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import scipy.signal
 from google.protobuf import json_format
 from google.protobuf import message as _message
-import scipy.signal
 
 from generated_protos import header_message_pb2, log_message_pb2
-from utils import low_latency_filter
 
 pd.options.mode.chained_assignment = None
 
@@ -42,6 +42,7 @@ class LogData:
         self.description = description
 
 
+## General directory helpers ##
 def getFilesByExtension(directory: str, ext: str) -> List[str]:
     log_dir_contents = os.listdir(directory)
     files = []
@@ -62,6 +63,7 @@ def filterFilesBySize(filenames: List[str], size_kb: int) -> List[str]:
     ]
 
 
+## Protobuf helpers ##
 def nextDelimitedMessage(
     buffer: io.BufferedIOBase,
 ) -> Tuple[_message.Message, MessageID]:
@@ -101,6 +103,7 @@ def loadBinary(path: str) -> LogData:
     return log_data
 
 
+## Log loaders ##
 def loadJson(filename: str, post_process=False) -> LogData:
     # TODO speed this up
     log_data = LogData()
@@ -117,6 +120,23 @@ def loadJson(filename: str, post_process=False) -> LogData:
     return log_data
 
 
+def loadParquet(filename: str, post_process: bool = False) -> LogData:
+    log_data = LogData()
+    with tarfile.open(filename, "r") as tar:
+        names = tar.getnames()
+        if "header.json" in names:
+            header_file = tar.extractfile("header.json")
+            header_data = json.loads(header_file.read().decode("utf-8"))
+            json_format.ParseDict(header_data["header"], log_data.header)
+            log_data.description = header_data["metadata"]["description"]
+        if "dataframe.parquet" in names:
+            dataframe_file = tar.extractfile("dataframe.parquet")
+            log_data.df = pd.read_parquet(io.BytesIO(dataframe_file.read()))
+    if post_process:
+        postProcessLogData(log_data)
+    return log_data
+
+
 def dumpLogDataToJson(filename: str, log_data: LogData):
     # TODO speed this up
     with open(filename, "w") as file:
@@ -126,30 +146,6 @@ def dumpLogDataToJson(filename: str, log_data: LogData):
             "metadata": {"description": log_data.description},
         }
         json.dump(json_obj, file, separators=(",", ":"))
-
-
-def dumpLogDataToBinary(filename: str, log_data: LogData) -> None:
-    with open(filename, "wb") as file:
-        serialized_header_message = log_data.header.SerializeToString()
-        message_id = MessageID.HEADER
-        message_length = len(serialized_header_message)
-        delimiter = f"{message_id:01X}{message_length:04X}"
-
-        file.write(delimiter.encode())
-        file.write(serialized_header_message)
-
-        rows = log_data.df.to_dict(orient="records")
-        log_message = log_message_pb2.LogMessage()
-        for row in rows:
-            json_format.ParseDict(row, log_message)
-            serialized_log_message = log_message.SerializeToString()
-
-            message_id = MessageID.LOG
-            message_length = len(serialized_log_message)
-            delimiter = f"{message_id:01X}{message_length:04X}"
-
-            file.write(delimiter.encode())
-            file.write(serialized_log_message)
 
 
 def appendNormalizedSeries(df: pd.DataFrame) -> None:
@@ -247,6 +243,7 @@ def postProcessLogData(log_data: LogData):
     appendNormalizedSeries(df)
 
 
+"""
 def figuresToHTML(
     figures: List[go.Figure],
     offline: bool = False,
@@ -308,29 +305,28 @@ def createFigures(graph_info_json: dict, log_data: LogData) -> List[go.Figure]:
         figures.append(fig)
     return figures
 
+def exportTuningGraphs(paths, export_path="graphs/tuning.html", silent=False):
+   figures = []
+   for path in paths:
+       log_data = loadBinary(path)
+       postProcessLogData(log_data)
 
-# def exportTuningGraphs(paths, export_path="graphs/tuning.html", silent=False):
-#    figures = []
-#    for path in paths:
-#        log_data = loadBinary(path)
-#        postProcessLogData(log_data)
-#
-#        df = log_data.df
-#        header = log_data.header
-#
-#        x_axis = "control_cycle_start_s"
-#        y_axises = ["engine_rpm", "secondary_rpm", "target_rpm"]
-#        title = f"{header.timestamp_human} (KP = {header.p_gain:.06f}, KD = {header.d_gain:.06f})"
-#        traces = [
-#            go.Scatter(x=df[x_axis], y=df[y_axis], name=y_axis) for y_axis in y_axises
-#        ]
-#        figure = go.Figure(traces)
-#        figure.update_layout(
-#            title=title,
-#            xaxis_title=x_axis,
-#            showlegend=True,
-#        )
-#        figures.append(figure)
-#
-#    dumpFiguresToHTML(figures, None, export_path)
-#
+       df = log_data.df
+       header = log_data.header
+
+       x_axis = "control_cycle_start_s"
+       y_axises = ["engine_rpm", "secondary_rpm", "target_rpm"]
+       title = f"{header.timestamp_human} (KP = {header.p_gain:.06f}, KD = {header.d_gain:.06f})"
+       traces = [
+           go.Scatter(x=df[x_axis], y=df[y_axis], name=y_axis) for y_axis in y_axises
+       ]
+       figure = go.Figure(traces)
+       figure.update_layout(
+           title=title,
+           xaxis_title=x_axis,
+           showlegend=True,
+       )
+       figures.append(figure)
+
+   dumpFiguresToHTML(figures, None, export_path)
+"""

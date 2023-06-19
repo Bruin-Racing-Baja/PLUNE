@@ -5,11 +5,11 @@ import os
 from typing import List, Tuple
 from uuid import uuid4
 
+import dash_bootstrap_components as dbc
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from dash import (
-    callback_context,
     Dash,
     Input,
     Output,
@@ -31,23 +31,20 @@ from dash_extensions.enrich import (
     TriggerTransform,
 )
 from google.protobuf import json_format
+from plotly_resampler import FigureResampler
 from trace_updater import TraceUpdater
 
 from utils import log_parser, odrive_utils
-from plotly_resampler import FigureResampler
 
 raw_log_dir = "raw_logs"
 json_log_dir = "logs"
 export_dir = "graphs"
 graph_info_file = "graphs.json"
 
-with open(graph_info_file, "r") as file:
-    graph_info_json = json.loads(file.read())
-raw_paths = log_parser.getFilesByExtension(raw_log_dir, "bin")
-json_paths = log_parser.getFilesByExtension(json_log_dir, "json")
+# with open(graph_info_file, "r") as file:
+# graph_info_json = json.loads(file.read())
+# raw_paths = log_parser.getFilesByExtension(raw_log_dir, "bin")
 
-
-import dash_bootstrap_components as dbc
 
 app = DashProxy(
     __name__,
@@ -59,8 +56,8 @@ app = DashProxy(
 
 def serveLayout():
     with open(graph_info_file, "r") as file:
-        graph_info_json = json.loads(file.read())
-    json_paths = log_parser.getFilesByExtension(json_log_dir, "json")
+        graph_info = json.loads(file.read())
+    json_paths = log_parser.getFilesByExtension(json_log_dir, "tar")
     header_layout = [
         # Page title
         html.Div(
@@ -68,7 +65,6 @@ def serveLayout():
             children=[
                 html.H1(
                     id="title",
-                    children="Loading...",
                 ),
             ],
         ),
@@ -82,33 +78,36 @@ def serveLayout():
             ),
         ),
         # Data
-        html.Div(
-            id="header-data-container",
-            children=[
-                html.Div(
-                    id="description-container",
-                    children=[
-                        dbc.Textarea(
-                            id="description-input",
-                        ),
-                        dbc.Button(
-                            "💾",
-                            id="description-save",
-                        ),
-                    ],
-                ),
-                dbc.Table(id="log-header-table"),
-                html.Div(
-                    dash_table.DataTable(),
-                    id="odrive-errors",
-                ),
-            ],
+        #
+        dcc.Loading(
+            html.Div(
+                id="header-data-container",
+                children=[
+                    html.Div(
+                        id="description-container",
+                        children=[
+                            dbc.Textarea(
+                                id="description-input",
+                            ),
+                            dbc.Button(
+                                "💾",
+                                id="description-save",
+                            ),
+                        ],
+                    ),
+                    dbc.Table(id="log-header-table"),
+                    html.Div(
+                        dash_table.DataTable(),
+                        id="odrive-errors",
+                    ),
+                ],
+            )
         ),
     ]
 
     return html.Div(
         [
-            dcc.Store(id="graph-info", data=graph_info_json),
+            dcc.Store(id="graph-info", data=graph_info),
             html.Div(id="header", children=header_layout),
             dcc.Store(id="graph-ready", data=False),
             dcc.Store(id="graph-data-ready"),
@@ -132,19 +131,17 @@ app.layout = serveLayout()
     State("graph-info", "data"),
     prevent_initial_call=True,
 )
-def constructGraphs(interval_id, data,graph_info_json) -> FigureResampler:
+def constructGraphs(interval_id, data, graph_info_json) -> FigureResampler:
     idx = int(interval_id[0]["index"])
     df = data
     graph_info = graph_info_json["figures"][idx]
     if graph_info.get("disabled", False):
         return (None), (None)
-    print("ONE",idx)
 
     fig = FigureResampler(go.Figure(), default_n_shown_samples=2_000)
 
-    print("TWO",idx)
     if not set(graph_info["y_axis"]).issubset(df.columns):
-        print(graph_info,"HELLO",df.columns)
+        print(graph_info, "HELLO", df.columns)
         print(f'Column(s) Missing: Skipping "{graph_info["title"]}"')
         return (None), (None)
 
@@ -185,7 +182,7 @@ def update_fig(relayoutdata: dict, fig: FigureResampler):
     Output("graph-data", "data"),
     Output("graph-container", "children"),
     Input("graph-info", "data"),
-    Input("file-selection", "value")
+    Input("file-selection", "value"),
 )
 def onGraphInfoChanged(data, path):
     dynamic_graphs = []
@@ -210,14 +207,13 @@ def onGraphInfoChanged(data, path):
     if path == None:
         return no_update
 
-    log_data = log_parser.loadJson(path)
+    log_data = log_parser.loadParquet(path)
     header = log_data.header
     df = log_data.df
     description = log_data.description
     # TODO: the header, description, and ODrive errors can all be in their own store
 
     log_parser.postProcessLogData(log_data)
-    
 
     title = log_data.header.timestamp_human
     if title == "":
@@ -238,7 +234,7 @@ def onGraphInfoChanged(data, path):
         header_table,
         description,
         Serverside(log_data.df),
-        dynamic_graphs
+        dynamic_graphs,
     )
 
 
@@ -314,7 +310,7 @@ if __name__ == "__main__":
                 continue
             log_data = log_parser.loadBinary(raw_path)
             print(f"Converting ({n+1}/{num_paths}): {raw_path} -> {json_path}")
-            log_parser.dumpLogDataToJson(json_path, log_data)
+            # log_parser.dumpLogDataToJson(json_path, log_data)
     elif args.clean:
         num_paths = len(raw_paths)
         for n, raw_path in enumerate(raw_paths):
