@@ -1,17 +1,35 @@
-#header{
-    display:flex;
-    flex-wrap: wrap;
-    flex-direction: column;
+#header {
+  display: flex;
+  flex-wrap: wrap;
+  flex-direction: column;
 }
 
-#header-data-container{
-    display: flex;
-    justify-content: space-around;
+#title-container {
+  margin: 10px 50px 10px;
+  text-align: center;
 }
-#description-container{
-    display: flex;
-    flex-direction: column;
+
+#file-selector {
+  margin: 10px 50px 10px;
+  box-shadow: 1px 1px 5px rgba(128, 128, 128, 0.5);
 }
-#description-input{
-    resize: both;
+
+#header-data-container {
+  display: flex;
+  justify-content: space-around;
+}
+
+#description-input {
+  margin: 10px 10px 10px;
+  box-shadow: 1px 1px 5px rgba(128, 128, 128, 0.5);
+}
+
+#log-header-table {
+  margin: 10px 10px 10px;
+  box-shadow: 1px 1px 5px rgba(128, 128, 128, 0.5);
+}
+
+#odrive-error-table {
+  margin: 10px 10px 10px;
+  box-shadow: 1px 1px 5px rgba(128, 128, 128, 0.5);
 }

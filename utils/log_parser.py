@@ -104,7 +104,7 @@ def loadBinary(path: str) -> LogData:
 
 
 ## Log loaders ##
-def loadJson(filename: str, post_process=False) -> LogData:
+def loadJson(filename: str) -> LogData:
     # TODO speed this up
     log_data = LogData()
     with open(filename, "r") as file:
@@ -115,28 +115,32 @@ def loadJson(filename: str, post_process=False) -> LogData:
             json_format.ParseDict(json_obj["header"], log_data.header)
         if "metadata" in json_obj:
             log_data.description = json_obj["metadata"].get("description", "")
-    if post_process:
-        postProcessLogData(log_data)
     return log_data
 
 
-def loadParquet(filename: str, post_process: bool = False) -> LogData:
-    log_data = LogData()
+def loadTar(filename: str) -> Tuple[dict, pd.DataFrame]:
     with tarfile.open(filename, "r") as tar:
-        names = tar.getnames()
-        if "header.json" in names:
+        tar_members = tar.getnames()
+
+        header = None
+        description = None
+        df = None
+
+        if "header.json" in tar_members:
             header_file = tar.extractfile("header.json")
             header_data = json.loads(header_file.read().decode("utf-8"))
-            json_format.ParseDict(header_data["header"], log_data.header)
-            log_data.description = header_data["metadata"]["description"]
-        if "dataframe.parquet" in names:
+            header = {}
+            header["header"] = header_data["header"]
+            header["description"] = header_data["metadata"]["description"]
+
+        if "dataframe.parquet" in tar_members:
             dataframe_file = tar.extractfile("dataframe.parquet")
-            log_data.df = pd.read_parquet(io.BytesIO(dataframe_file.read()))
-    if post_process:
-        postProcessLogData(log_data)
-    return log_data
+            df = pd.read_parquet(io.BytesIO(dataframe_file.read()))
+
+    return header, df
 
 
+"""
 def dumpLogDataToJson(filename: str, log_data: LogData):
     # TODO speed this up
     with open(filename, "w") as file:
@@ -146,6 +150,7 @@ def dumpLogDataToJson(filename: str, log_data: LogData):
             "metadata": {"description": log_data.description},
         }
         json.dump(json_obj, file, separators=(",", ":"))
+"""
 
 
 def appendNormalizedSeries(df: pd.DataFrame) -> None:
@@ -180,16 +185,14 @@ def trimDataframe(
         & (df["control_cycle_start_s"].lt(end_s)),
         :,
     ]
-    return df
 
 
-def postProcessLogData(log_data: LogData):
+def postProcessDataframe(df: pd.DataFrame):
     wheel_diameter = 23
     pitch_angle = 2
     actuator_belt_ratio = 1.5  # ballscrew:motor
     encoder_cpr = 8192
     wheel_to_secondary_ratio = (57 / 18) * (45 / 17)
-    df = log_data.df
     df["control_cycle_start_s"] = df["control_cycle_start_us"] / 1e6
     diff = df["control_cycle_start_s"].diff()
 
@@ -201,8 +204,7 @@ def postProcessLogData(log_data: LogData):
 
     df["control_cycle_dt_s"] = df["control_cycle_dt_us"] / 1e6
 
-    log_data.df = trimDataframe(df, 5.5)
-    df = log_data.df
+    trimDataframe(df, 5.5)
 
     df["secondary_rpm"] = df["wheel_rpm"] * wheel_to_secondary_ratio
     df["wheel_mph"] = (df["wheel_rpm"] * wheel_diameter * np.pi) / (12 * 5280) * 60

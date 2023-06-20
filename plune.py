@@ -9,18 +9,7 @@ import dash_bootstrap_components as dbc
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from dash import (
-    Dash,
-    Input,
-    Output,
-    State,
-    callback,
-    callback_context,
-    dash_table,
-    dcc,
-    html,
-    no_update,
-)
+from dash import Input, Output, State, dcc, html, no_update
 from dash.dependencies import ALL, MATCH
 from dash_extensions.enrich import (
     DashProxy,
@@ -30,14 +19,13 @@ from dash_extensions.enrich import (
     Trigger,
     TriggerTransform,
 )
-from google.protobuf import json_format
 from plotly_resampler import FigureResampler
 from trace_updater import TraceUpdater
 
 from utils import log_parser, odrive_utils
 
 raw_log_dir = "raw_logs"
-json_log_dir = "logs"
+log_dir = "logs"
 export_dir = "graphs"
 graph_info_file = "graphs.json"
 
@@ -57,7 +45,8 @@ app = DashProxy(
 def serveLayout():
     with open(graph_info_file, "r") as file:
         graph_info = json.loads(file.read())
-    json_paths = log_parser.getFilesByExtension(json_log_dir, "tar")
+    log_paths = log_parser.getFilesByExtension(log_dir, "tar")
+
     header_layout = [
         # Page title
         html.Div(
@@ -68,37 +57,25 @@ def serveLayout():
                 ),
             ],
         ),
-        # File selection
-        html.Div(
-            id="file-selection-container",
-            children=dcc.Dropdown(
-                id="file-selection",
-                options=json_paths,
-                value=json_paths[-1] if len(json_paths) > 0 else None,
-            ),
+        # File selector
+        dcc.Dropdown(
+            id="file-selector",
+            options=log_paths,
+            value=log_paths[-1] if len(log_paths) > 0 else None,
         ),
-        # Data
-        #
+        # Log data
         dcc.Loading(
             html.Div(
                 id="header-data-container",
                 children=[
-                    html.Div(
-                        id="description-container",
-                        children=[
-                            dbc.Textarea(
-                                id="description-input",
-                            ),
-                            dbc.Button(
-                                "💾",
-                                id="description-save",
-                            ),
-                        ],
+                    dbc.Textarea(
+                        id="description-input",
                     ),
-                    dbc.Table(id="log-header-table"),
-                    html.Div(
-                        dash_table.DataTable(),
-                        id="odrive-errors",
+                    dbc.Table(
+                        id="log-header-table", bordered=True, hover=True, striped=True
+                    ),
+                    dbc.Table(
+                        id="odrive-error-table", bordered=True, hover=True, striped=True
                     ),
                 ],
             )
@@ -109,8 +86,6 @@ def serveLayout():
         [
             dcc.Store(id="graph-info", data=graph_info),
             html.Div(id="header", children=header_layout),
-            dcc.Store(id="graph-ready", data=False),
-            dcc.Store(id="graph-data-ready"),
             dcc.Store(id="graph-data"),
             html.Div(
                 id="graph-container",
@@ -120,6 +95,15 @@ def serveLayout():
 
 
 app.layout = serveLayout()
+
+
+@app.callback(
+    Input("description-input", "value"),
+    State("file-selector", "value"),
+    prevent_initial_call=True,
+)
+def onDescriptionChanged(description: str, path: str) -> None:
+    pass
 
 
 @app.callback(
@@ -141,7 +125,6 @@ def constructGraphs(interval_id, data, graph_info_json) -> FigureResampler:
     fig = FigureResampler(go.Figure(), default_n_shown_samples=2_000)
 
     if not set(graph_info["y_axis"]).issubset(df.columns):
-        print(graph_info, "HELLO", df.columns)
         print(f'Column(s) Missing: Skipping "{graph_info["title"]}"')
         return (None), (None)
 
@@ -176,17 +159,21 @@ def update_fig(relayoutdata: dict, fig: FigureResampler):
 
 @app.callback(
     Output("title", "children"),
-    Output("odrive-errors", "children"),
+    Output("odrive-error-table", "children"),
     Output("log-header-table", "children"),
     Output("description-input", "value"),
     Output("graph-data", "data"),
     Output("graph-container", "children"),
     Input("graph-info", "data"),
-    Input("file-selection", "value"),
+    Input("file-selector", "value"),
 )
-def onGraphInfoChanged(data, path):
+def onGraphInfoChanged(graph_info, path):
+    if path == None:
+        return no_update
+
+    # Create list of empty graphs and corresponding resampler components
     dynamic_graphs = []
-    for idx in range(len(data["figures"])):
+    for idx in range(len(graph_info["figures"])):
         uid = str(uuid4())
         dynamic_graphs.append(
             html.Div(
@@ -204,67 +191,46 @@ def onGraphInfoChanged(data, path):
                 ],
             )
         )
-    if path == None:
-        return no_update
 
-    log_data = log_parser.loadParquet(path)
-    header = log_data.header
-    df = log_data.df
-    description = log_data.description
-    # TODO: the header, description, and ODrive errors can all be in their own store
+    header, df = log_parser.loadTar(path)
 
-    log_parser.postProcessLogData(log_data)
+    log_parser.postProcessDataframe(df)
 
-    title = log_data.header.timestamp_human
+    title = header["header"]["timestampHuman"]
     if title == "":
         title = "Timestamp Missing"
 
     uid = str(uuid4())
 
-    odrive_error_table = createODriveErrorTable(df)
+    odrive_error_table_data = getODriveErrorDict(df)
+    odrive_error_table = dictToTable(
+        ("Timestamp", "ODrive Errors"), odrive_error_table_data
+    )
 
-    header_table_data = json_format.MessageToDict(header)
-    header_table = dictToTable(("Constant", "Value"), header_table_data)
+    header_table = dictToTable(("Constant", "Value"), header["header"])
 
-    global description_changed
-    description_changed = False
     return (
         title,
-        [odrive_error_table],
+        odrive_error_table,
         header_table,
-        description,
-        Serverside(log_data.df),
+        header["description"],
+        Serverside(df),
         dynamic_graphs,
     )
 
 
-def createODriveErrorTable(df: pd.DataFrame) -> dash_table.DataTable:
+def getODriveErrorDict(df: pd.DataFrame) -> dict:
     odrive_errors = odrive_utils.getODriveErrors(df)
     if len(odrive_errors) == 0:
         return None
 
     odrive_error_dict = {}
+
     for odrive_error in odrive_errors:
         timestamp_str = f"{odrive_error.timestamp:.03f}"
-        if not timestamp_str in odrive_error_dict:
-            odrive_error_dict[timestamp_str] = "\n".join(odrive_error.names)
-        else:
-            odrive_error_dict[timestamp_str] += "\n" + "\n".join(odrive_error.names)
+        odrive_error_dict[timestamp_str] = "\n".join(odrive_error.names)
 
-    odrive_error_rows = [
-        {"timestamp": timestamp, "errors": errors}
-        for timestamp, errors in odrive_error_dict.items()
-    ]
-
-    odrive_error_table = dash_table.DataTable(
-        id="datatable",
-        columns=[
-            {"name": "TIMESTAMP", "id": "timestamp"},
-            {"name": "ODRIVE ERRORS", "id": "errors"},
-        ],
-        data=odrive_error_rows,
-    )
-    return odrive_error_table
+    return odrive_error_dict
 
 
 def dictToTable(header: Tuple[str, str], data: dict) -> list:
@@ -274,9 +240,6 @@ def dictToTable(header: Tuple[str, str], data: dict) -> list:
     ]
     table_body = [html.Tbody(table_rows)]
     return table_header + table_body
-
-
-description_changed = False
 
 
 def exportGraphs():
@@ -300,6 +263,9 @@ if __name__ == "__main__":
 
     if args.export:
         exportGraphs()
+    else:
+        app.run_server(debug=True)
+    """
     elif args.convert:
         num_paths = len(raw_paths)
         for n, raw_path in enumerate(raw_paths):
@@ -329,8 +295,7 @@ if __name__ == "__main__":
                 print(raw_path)
             if len(log_data.df) == 0:
                 print(raw_path)
-    else:
-        app.run_server(debug=True)
+    """
 
 """
 @callback(
