@@ -68,9 +68,7 @@ def serveLayout():
             html.Div(
                 id="header-data-container",
                 children=[
-                    dbc.Textarea(
-                        id="description-input",
-                    ),
+                    dbc.Textarea(id="description-input", debounce=True),
                     dbc.Table(
                         id="log-header-table", bordered=True, hover=True, striped=True
                     ),
@@ -103,7 +101,7 @@ app.layout = serveLayout()
     prevent_initial_call=True,
 )
 def onDescriptionChanged(description: str, path: str) -> None:
-    pass
+    log_parser.updateTarDescription(path, description)
 
 
 @app.callback(

@@ -245,6 +245,33 @@ def postProcessDataframe(df: pd.DataFrame):
     appendNormalizedSeries(df)
 
 
+def updateTarDescription(tar_path: str, description: str) -> None:
+    tar_buffer = io.BytesIO()
+
+    with tarfile.open(tar_path, "r") as original_tar:
+        with tarfile.open(fileobj=tar_buffer, mode="w") as new_tar:
+            for tarinfo in original_tar:
+                if tarinfo.name == "header.json":
+                    header_file = original_tar.extractfile(tarinfo)
+                    header_data = json.load(header_file)
+
+                    header_data["metadata"]["description"] = description
+
+                    updated_header = json.dumps(header_data).encode("utf-8")
+
+                    updated_header_info = tarinfo
+                    updated_header_info.size = len(updated_header)
+
+                    new_tar.addfile(updated_header_info, io.BytesIO(updated_header))
+                else:
+                    file_content = original_tar.extractfile(tarinfo).read()
+                    new_tar.addfile(tarinfo, io.BytesIO(file_content))
+
+    tar_buffer.seek(0)
+    with open(tar_path, "wb") as new_tar:
+        new_tar.write(tar_buffer.getvalue())
+
+
 """
 def figuresToHTML(
     figures: List[go.Figure],
