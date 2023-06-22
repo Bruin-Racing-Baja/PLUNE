@@ -7,3 +7,4 @@ logs
 graphs
 
 file_system_backend
+dash_cache_backend

@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 import argparse
+import atexit
 import json
 import os
+import shutil
 from typing import List, Tuple
 from uuid import uuid4
 
@@ -13,6 +15,7 @@ from dash import Input, Output, State, dcc, html, no_update
 from dash.dependencies import ALL, MATCH
 from dash_extensions.enrich import (
     DashProxy,
+    FileSystemBackend,
     NoOutputTransform,
     Serverside,
     ServersideOutputTransform,
@@ -38,7 +41,11 @@ app = DashProxy(
     __name__,
     suppress_callback_exceptions=True,
     external_stylesheets=[dbc.themes.BOOTSTRAP],
-    transforms=[ServersideOutputTransform(), TriggerTransform(), NoOutputTransform()],
+    transforms=[
+        ServersideOutputTransform([FileSystemBackend("dash_cache_backend")]),
+        TriggerTransform(),
+        NoOutputTransform(),
+    ],
 )
 
 
@@ -139,7 +146,8 @@ def constructGraphs(interval_id, data, graph_info_json) -> FigureResampler:
         showlegend=True,
         margin=dict(l=20, r=20, t=60, b=20),
     )
-    return Serverside(fig), fig
+    # Setting Serverside key ensures we dont keep filling up disk space
+    return Serverside(fig, key=f"figure-{idx}"), fig
 
 
 @app.callback(
@@ -190,29 +198,40 @@ def onGraphInfoChanged(graph_info, path):
             )
         )
 
-    header, df = log_parser.loadTar(path)
+    log_data = log_parser.loadTar(path)
+    header = log_data.header
+    post = log_data.post
+    df = log_data.df
 
     log_parser.postProcessDataframe(df)
 
-    title = header["header"]["timestampHuman"]
+    title = header["timestampHuman"]
     if title == "":
         title = "Timestamp Missing"
 
     uid = str(uuid4())
 
     odrive_error_table_data = getODriveErrorDict(df)
-    odrive_error_table = dictToTable(
-        ("Timestamp", "ODrive Errors"), odrive_error_table_data
-    )
+    odrive_error_table = None
+    # TODO: Fix table flexbox styling if no ODrive errors
+    if odrive_error_table_data != None:
+        odrive_error_table = dictToTable(
+            ("Timestamp", "ODrive Errors"), odrive_error_table_data
+        )
 
-    header_table = dictToTable(("Constant", "Value"), header["header"])
+    header_table = dictToTable(("Constant", "Value"), header)
 
+    description = ""
+    if post != None:
+        description = post["description"]
+
+    # Setting Serverside key ensures we dont keep filling up disk space
     return (
         title,
         odrive_error_table,
         header_table,
-        header["description"],
-        Serverside(df),
+        description,
+        Serverside(df, key=f"dataframe"),
         dynamic_graphs,
     )
 
@@ -244,37 +263,61 @@ def exportGraphs():
     pass
 
 
+def exitHandler():
+    print("Deleting contents of dash_cache_backend...")
+    shutil.rmtree("dash_cache_backend")
+
+
 if __name__ == "__main__":
     # hi cal poly slo
     parser = argparse.ArgumentParser(description="PLotting Utility N Exporter")
 
     parser.add_argument(
-        "-e", "--export", action="store_true", help="export all logs to html graphs"
-    )
-    parser.add_argument(
         "-c", "--convert", action="store_true", help="convert all logs to json files"
+    )
+
+    """
+    parser.add_argument(
+        "-e", "--export", action="store_true", help="export all logs to html graphs"
     )
     parser.add_argument("-l", "--clean", action="store_true", help="clean log files")
     parser.add_argument("-t", "--test", action="store_true", help="testing")
+    """
 
     args = parser.parse_args()
 
-    if args.export:
-        exportGraphs()
+    if args.convert:
+        raw_log_paths = log_parser.getFilesByExtension(raw_log_dir, "bin")
+        log_paths = []
+        skip_idxs = []
+        for idx, raw_log_path in enumerate(raw_log_paths):
+            filename = os.path.splitext(os.path.basename(raw_log_path))[0]
+            log_path = os.path.join(log_dir, f"{filename}.tar")
+            if os.path.isfile(log_path):
+                skip_idxs.append(idx)
+            else:
+                log_paths.append(log_path)
+
+        num_paths = len(log_paths)
+        log_idx = 0
+
+        for raw_log_idx, raw_log_path in enumerate(raw_log_paths):
+            if raw_log_idx in skip_idxs:
+                continue
+            log_path = log_paths[log_idx]
+            log_data = log_parser.loadBinary(raw_log_path)
+            if log_data == None:
+                print(f"Failed to load {raw_log_path}")
+            else:
+                print(
+                    f"Converting ({log_idx +1}/{num_paths}): {raw_log_path} -> {log_path}"
+                )
+                log_parser.dumpTar(log_path, log_data)
+            log_idx += 1
     else:
+        atexit.register(exitHandler)
         app.run_server(debug=True)
     """
-    elif args.convert:
-        num_paths = len(raw_paths)
-        for n, raw_path in enumerate(raw_paths):
-            file_ext = os.path.splitext(raw_path)[1]
-            filename = os.path.splitext(os.path.basename(raw_path))[0]
-            json_path = os.path.join(json_log_dir, f"{filename}.json")
-            if os.path.isfile(json_path):
-                continue
-            log_data = log_parser.loadBinary(raw_path)
-            print(f"Converting ({n+1}/{num_paths}): {raw_path} -> {json_path}")
-            # log_parser.dumpLogDataToJson(json_path, log_data)
     elif args.clean:
         num_paths = len(raw_paths)
         for n, raw_path in enumerate(raw_paths):

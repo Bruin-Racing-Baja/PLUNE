@@ -31,15 +31,10 @@ pb2_messages = {
 
 
 class LogData:
-    def __init__(
-        self,
-        header: header_message_pb2.HeaderMessage = header_message_pb2.HeaderMessage(),
-        df: pd.DataFrame = pd.DataFrame(),
-        description: str = "",
-    ):
+    def __init__(self, header: dict = None, post: dict = None, df: pd.DataFrame = None):
         self.header = header
+        self.post = post
         self.df = df
-        self.description = description
 
 
 ## General directory helpers ##
@@ -87,23 +82,27 @@ def loadBinary(path: str) -> LogData:
     columns = [field.name for field in log_message_pb2.LogMessage.DESCRIPTOR.fields]
     rows = []
     with open(path, "rb") as file:
-        while True:
-            message, message_id = nextDelimitedMessage(file)
+        try:
+            while True:
+                message, message_id = nextDelimitedMessage(file)
 
-            if message_id == MessageID.NONE:
-                break
-            elif message_id == MessageID.HEADER:
-                log_data.header = message
-            elif message_id == MessageID.LOG:
-                row_values = [None] * len(columns)
-                for idx, col in enumerate(columns):
-                    row_values[idx] = getattr(message, col)
-                rows.append(row_values)
-    log_data.df = pd.DataFrame(rows, columns=columns)
+                if message_id == MessageID.NONE:
+                    break
+                elif message_id == MessageID.HEADER:
+                    log_data.header = json_format.MessageToDict(message)
+                elif message_id == MessageID.LOG:
+                    row_values = [None] * len(columns)
+                    for idx, col in enumerate(columns):
+                        row_values[idx] = getattr(message, col)
+                    rows.append(row_values)
+            log_data.df = pd.DataFrame(rows, columns=columns)
+        except ValueError:
+            log_data = None
     return log_data
 
 
 ## Log loaders ##
+"""
 def loadJson(filename: str) -> LogData:
     # TODO speed this up
     log_data = LogData()
@@ -116,28 +115,57 @@ def loadJson(filename: str) -> LogData:
         if "metadata" in json_obj:
             log_data.description = json_obj["metadata"].get("description", "")
     return log_data
+"""
 
 
-def loadTar(filename: str) -> Tuple[dict, pd.DataFrame]:
+def loadTar(filename: str) -> LogData:
+    log_data = LogData()
     with tarfile.open(filename, "r") as tar:
         tar_members = tar.getnames()
 
-        header = None
-        description = None
-        df = None
-
         if "header.json" in tar_members:
             header_file = tar.extractfile("header.json")
-            header_data = json.loads(header_file.read().decode("utf-8"))
-            header = {}
-            header["header"] = header_data["header"]
-            header["description"] = header_data["metadata"]["description"]
-
+            log_data.header = json.loads(header_file.read().decode("utf-8"))
+        if "post.json" in tar_members:
+            post_file = tar.extractfile("post.json")
+            log_data.post = json.loads(post_file.read().decode("utf-8"))
         if "dataframe.parquet" in tar_members:
             dataframe_file = tar.extractfile("dataframe.parquet")
-            df = pd.read_parquet(io.BytesIO(dataframe_file.read()))
+            log_data.df = pd.read_parquet(io.BytesIO(dataframe_file.read()))
 
-    return header, df
+    return log_data
+
+
+def dumpTar(filename: str, log_data: LogData) -> None:
+    parquet_buffer = io.BytesIO()
+    log_data.df.to_parquet(parquet_buffer)
+    parquet_buffer.seek(0)
+
+    header_json = json.dumps(log_data.header)
+    post_json = json.dumps(log_data.post)
+    if post_json == None:
+        header_json = {}
+
+    tar_buffer = io.BytesIO()
+    with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
+        parquet_info = tarfile.TarInfo("dataframe.parquet")
+        parquet_info.size = len(parquet_buffer.getvalue())
+        tar.addfile(parquet_info, parquet_buffer)
+
+        header_json_info = tarfile.TarInfo("header.json")
+        header_json_buffer = io.BytesIO(header_json.encode())
+        header_json_info.size = len(header_json_buffer.getvalue())
+        tar.addfile(header_json_info, header_json_buffer)
+
+        post_json_info = tarfile.TarInfo("post.json")
+        post_json_buffer = io.BytesIO(post_json.encode())
+        post_json_info.size = len(post_json_buffer.getvalue())
+        tar.addfile(post_json_info, post_json_buffer)
+
+    tar_buffer.seek(0)
+
+    with open(filename, "wb") as f:
+        f.write(tar_buffer.getvalue())
 
 
 """
@@ -251,18 +279,20 @@ def updateTarDescription(tar_path: str, description: str) -> None:
     with tarfile.open(tar_path, "r") as original_tar:
         with tarfile.open(fileobj=tar_buffer, mode="w") as new_tar:
             for tarinfo in original_tar:
-                if tarinfo.name == "header.json":
-                    header_file = original_tar.extractfile(tarinfo)
-                    header_data = json.load(header_file)
+                if tarinfo.name == "post.json":
+                    post_file = original_tar.extractfile(tarinfo)
+                    post_data = json.load(post_file)
+                    if post_data == None:
+                        post_data = {}
 
-                    header_data["metadata"]["description"] = description
+                    post_data["description"] = description
 
-                    updated_header = json.dumps(header_data).encode("utf-8")
+                    updated_post = json.dumps(post_data).encode("utf-8")
 
-                    updated_header_info = tarinfo
-                    updated_header_info.size = len(updated_header)
+                    updated_post_info = tarinfo
+                    updated_post_info.size = len(updated_post)
 
-                    new_tar.addfile(updated_header_info, io.BytesIO(updated_header))
+                    new_tar.addfile(updated_post_info, io.BytesIO(updated_post))
                 else:
                     file_content = original_tar.extractfile(tarinfo).read()
                     new_tar.addfile(tarinfo, io.BytesIO(file_content))
