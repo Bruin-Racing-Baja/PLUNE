@@ -1,0 +1,9 @@
+dash_bootstrap_components==1.5.0
+numpy==1.26.3
+pandas==2.1.4
+dash_extensions==1.0.7
+plotly_resampler==0.9.1
+scipy==1.11.4
+protobuf==4.25.2
+odrive==0.6.8
+pyarrow==14.0.2
