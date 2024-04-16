@@ -12,7 +12,7 @@ import scipy.signal
 from google.protobuf import json_format
 from google.protobuf import message as _message
 
-from generated_protos import header_message_pb2, log_message_pb2
+from generated_protos import operation_header_pb2, control_function_state_pb2
 
 pd.options.mode.chained_assignment = None
 
@@ -22,11 +22,10 @@ class MessageID(IntEnum):
     HEADER = 0
     LOG = 1
 
-
 pb2_messages = {
     MessageID.NONE: None,
-    MessageID.HEADER: header_message_pb2.HeaderMessage,
-    MessageID.LOG: log_message_pb2.LogMessage,
+    MessageID.HEADER: operation_header_pb2.OperationHeader,
+    MessageID.LOG: control_function_state_pb2.ControlFunctionState,
 }
 
 
@@ -71,6 +70,7 @@ def nextDelimitedMessage(
     message_length = int(raw_message_length, 16)
 
     raw_message = buffer.read(message_length)
+
     message = pb2_messages[message_id]()
     message.ParseFromString(raw_message)
 
@@ -79,7 +79,7 @@ def nextDelimitedMessage(
 
 def loadBinary(path: str) -> LogData:
     log_data = LogData()
-    columns = [field.name for field in log_message_pb2.LogMessage.DESCRIPTOR.fields]
+    columns = [field.name for field in control_function_state_pb2.ControlFunctionState.DESCRIPTOR.fields]
     rows = []
     with open(path, "rb") as file:
         try:
@@ -209,8 +209,8 @@ def trimDataframe(
     df: pd.DataFrame, start_s: float = 0, end_s: float = float("inf")
 ) -> pd.DataFrame:
     df = df.loc[
-        (df["control_cycle_start_s"].gt(start_s))
-        & (df["control_cycle_start_s"].lt(end_s)),
+        (df["cycle_start_s"].gt(start_s))
+        & (df["cycle_start_s"].lt(end_s)),
         :,
     ]
 
@@ -221,54 +221,59 @@ def postProcessDataframe(df: pd.DataFrame):
     actuator_belt_ratio = 1.5  # ballscrew:motor
     encoder_cpr = 8192
     wheel_to_secondary_ratio = (57 / 18) * (45 / 17)
-    df["control_cycle_start_s"] = df["control_cycle_start_us"] / 1e6
-    diff = df["control_cycle_start_s"].diff()
+    df["cycle_start_s"] = df["cycle_start_us"] / 1e6
+    diff = df["cycle_start_s"].diff()
+    df["inbound_limit_switch"] = df["inbound_limit_switch"].astype(int)
+    df["outbound_limit_switch"] = df["outbound_limit_switch"].astype(int)
+    df["engage_limit_switch"] = df["engage_limit_switch"].astype(int)
 
     idxs = diff[diff < 0].index
     for idx in idxs:
-        df["control_cycle_start_us"].iloc[idx:] += 2**32 - 1
-        df["control_cycle_stop_us"].iloc[idx:] += 2**32 - 1
-        df["control_cycle_start_s"].iloc[idx:] += (2**32 - 1) / 1e6
+        df["cycle_start_us"].iloc[idx:] += 2**32 - 1
+        # df["control_cycle_stop_us"].iloc[idx:] += 2**32 - 1
+        df["cycle_start_s"].iloc[idx:] += (2**32 - 1) / 1e6
 
-    df["control_cycle_dt_s"] = df["control_cycle_dt_us"] / 1e6
+    # df["control_cycle_dt_s"] = df["control_cycle_dt_us"] / 1e6
 
     trimDataframe(df, 5.5)
+    b, a = scipy.signal.butter(1, 3.2, fs=100)
+    df["filtered_engine_rpm"] = scipy.signal.lfilter(b, a, df["engine_rpm"])
 
-    df["secondary_rpm"] = df["wheel_rpm"] * wheel_to_secondary_ratio
-    df["wheel_mph"] = (df["wheel_rpm"] * wheel_diameter * np.pi) / (12 * 5280) * 60
-    b, a = scipy.signal.butter(12, 1.2, fs=50)
-    df["wheel_mph"] = scipy.signal.filtfilt(b, a, df["wheel_mph"])
-
-    df["vehicle_position_feet"] = (
-        np.cumsum(df["wheel_mph"] * 5280 * df["control_cycle_dt_s"]) / 3600
-    )
-
-    df["actuator_position_inches"] = (
-        -df["shadow_count"]
-        / encoder_cpr
-        * pitch_angle
-        * actuator_belt_ratio
-        / 2.54
-        / 10
-    )
-    df["motor_position_rot"] = df["shadow_count"] / encoder_cpr
-
-    df["shift_ratio"] = df["filtered_engine_rpm"] / df["filtered_secondary_rpm"]
-    df["shift_ratio"] = df["shift_ratio"].clip(lower=0.2, upper=2)
-
+#    df["secondary_rpm"] = df["wheel_rpm"] * wheel_to_secondary_ratio
+#    df["wheel_mph"] = (df["wheel_rpm"] * wheel_diameter * np.pi) / (12 * 5280) * 60
+#    b, a = scipy.signal.butter(12, 1.2, fs=50)
+#    df["wheel_mph"] = scipy.signal.filtfilt(b, a, df["wheel_mph"])
+#
+#    df["vehicle_position_feet"] = (
+#        np.cumsum(df["wheel_mph"] * 5280 * df["control_cycle_dt_s"]) / 3600
+#    )
+#
+#    df["actuator_position_inches"] = (
+#        -df["shadow_count"]
+#        / encoder_cpr
+#        * pitch_angle
+#        * actuator_belt_ratio
+#        / 2.54
+#        / 10
+#    )
+#    df["motor_position_rot"] = df["shadow_count"] / encoder_cpr
+#
+#    df["shift_ratio"] = df["filtered_engine_rpm"] / df["filtered_secondary_rpm"]
+#    df["shift_ratio"] = df["shift_ratio"].clip(lower=0.2, upper=2)
+#
     p = 0.04
     d = 0.002
 
-    df["simulated_velocity_command_p"] = p * (df["target_rpm"] - df["engine_rpm"])
-    df["simulated_velocity_command_d"] = np.maximum(d * df["engine_rpm_deriv_error"], 0)
-
-    df["simulated_velocity_command"] = (
-        df["simulated_velocity_command_p"] + df["simulated_velocity_command_d"]
-    )
-
-    df["control_cycle_execution_time_us"] = (
-        df["control_cycle_stop_us"].shift(-1)
-    ) - df["control_cycle_start_us"]
+#    df["simulated_velocity_command_p"] = p * (df["target_rpm"] - df["engine_rpm"])
+#    df["simulated_velocity_command_d"] = np.maximum(d * df["engine_rpm_deriv_error"], 0)
+#
+#    df["simulated_velocity_command"] = (
+#        df["simulated_velocity_command_p"] + df["simulated_velocity_command_d"]
+#    )
+#
+#    df["control_cycle_execution_time_us"] = (
+#        df["control_cycle_stop_us"].shift(-1)
+#    ) - df["cycle_start_us"]
 
     appendNormalizedSeries(df)
 
@@ -373,7 +378,7 @@ def exportTuningGraphs(paths, export_path="graphs/tuning.html", silent=False):
        df = log_data.df
        header = log_data.header
 
-       x_axis = "control_cycle_start_s"
+       x_axis = "cycle_start_s"
        y_axises = ["engine_rpm", "secondary_rpm", "target_rpm"]
        title = f"{header.timestamp_human} (KP = {header.p_gain:.06f}, KD = {header.d_gain:.06f})"
        traces = [

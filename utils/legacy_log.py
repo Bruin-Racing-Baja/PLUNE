@@ -40,8 +40,9 @@ def convertCSVToBinary(path):
         df.columns = csv_cols_no_unclamp
     else:
         df.columns = csv_cols
-    df["inbound_estop"] = df["inbound_estop"].astype(bool)
-    df["outbound_estop"] = df["outbound_estop"].astype(bool)
+    df["inbound_limit_switch"] = df["inbound_limit_switch"].astype(bool)
+    df["outbound_limit_switch"] = df["outbound_limit_switch"].astype(bool)
+    df["engage_limit_switch"] = df["engage_limit_switch"].astype(bool)
     df = df.drop("flushed", axis=1)
 
     path_without_ext = os.path.splitext(path)[0]

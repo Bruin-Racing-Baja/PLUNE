@@ -1,7 +1,7 @@
 {
   "figures": [
     {
-      "x_axis": "control_cycle_start_s",
+      "x_axis": "cycle_start_s",
       "y_axis": [
         "engine_rpm",
         "filtered_engine_rpm",
@@ -12,97 +12,54 @@
       "title": "Engine, Secondary, Target RPM"
     },
     {
-      "x_axis": "control_cycle_start_s",
+      "x_axis": "cycle_start_s",
       "y_axis": [
         "norm_engine_rpm",
         "norm_secondary_rpm",
-        "norm_actuator_position_inches"
+        "norm_position_estimate"
       ],
-      "title": "Normalized Engine/Secondary RPM, Actuator Position"
+      "title": "normalized engine/secondary rpm, actuator position"
     },
     {
-      "x_axis": "control_cycle_start_s",
+      "x_axis": "cycle_start_s",
       "y_axis": [
-        "actuator_position_inches",
-        "norm_inbound_estop",
-        "norm_outbound_estop"
-      ],
-      "title": "Actuator Position (inches)"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "norm_velocity_command",
-        "norm_velocity_estimate",
-        "norm_inbound_estop",
-        "norm_outbound_estop"
-      ],
-      "title": "Normalized Actuator Velocity, Estops"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "velocity_estimate",
+        "velocity_estimate",  
         "velocity_command"
       ],
-      "title": "Actuator Velocities"
+      "title": "Actuator Velocity"
     },
     {
-      "x_axis": "control_cycle_start_s",
+      "x_axis": "cycle_start_s",
       "y_axis": [
-        "norm_velocity_command",
-        "norm_velocity_estimate",
-        "norm_shadow_count"
+        "position_estimate",
+        "outbound_limit_switch",
+        "engage_limit_switch",
+        "inbound_limit_switch"
       ],
-      "title": "Normalzied Actuator Velocity, Shadow Count"
+      "title": "Actuator Position"
     },
     {
-      "x_axis": "control_cycle_start_s",
+      "x_axis": "cycle_start_s",
       "y_axis": [
-        "voltage",
-        "iq_measured"
+        "iq_measured",
+        "iq_setpoint"
       ],
-      "title": "Voltage, Current"
+      "title": "IQ Values"
     },
     {
-      "x_axis": "control_cycle_start_s",
+      "x_axis": "cycle_start_s",
       "y_axis": [
-        "simulated_velocity_command_p",
-        "simulated_velocity_command_d",
-        "simulated_velocity_command",
-        "velocity_command"
+        "disarm_reason"
       ],
-      "title": "Simulated Controller"
+      "title": "Disarm Reason"
     },
     {
-      "x_axis": "control_cycle_start_s",
+      "x_axis": "cycle_start_s",
       "y_axis": [
-        "wheel_mph"
+        "bus_current",
+        "norm_disarm_reason"
       ],
-      "title": "Vehicle Speed"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "norm_brake_light_signal",
-        "norm_filtered_brake_light_signal",
-        "norm_brake_pressed"
-      ],
-      "title": "Brake Light Signal"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "control_cycle_execution_time_us"
-      ],
-      "title": "Cycle Execution Time (us)"
-    },
-    {
-      "x_axis": "control_cycle_start_s",
-      "y_axis": [
-        "shift_ratio"
-      ],
-      "title": "Shift Ratio"
+      "title": "ibus and Disarm Reason"
     }
   ]
 }

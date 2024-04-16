@@ -205,9 +205,9 @@ def onGraphInfoChanged(graph_info, path):
 
     log_parser.postProcessDataframe(df)
 
-    title = header["timestampHuman"]
-    if title == "":
-        title = "Timestamp Missing"
+    title = "Header Missing"
+    if header is not None:
+        title = header["timestampHuman"]
 
     uid = str(uuid4())
 
@@ -219,7 +219,9 @@ def onGraphInfoChanged(graph_info, path):
             ("Timestamp", "ODrive Errors"), odrive_error_table_data
         )
 
-    header_table = dictToTable(("Constant", "Value"), header)
+    header_table = None
+    if header is not None:
+        header_table = dictToTable(("Constant", "Value"), header)
 
     description = ""
     if post != None:
