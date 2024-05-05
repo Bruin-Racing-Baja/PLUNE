@@ -205,9 +205,14 @@ def onGraphInfoChanged(graph_info, path):
 
     log_parser.postProcessDataframe(df)
 
-    title = "Header Missing"
+    title = "Timestamp Missing"
+    from datetime import datetime
+    
+    # if you encounter a "year is out of range" error the timestamp
+    # may be in milliseconds, try `ts /= 1000` in that case
     if header is not None:
-        title = header["timestampHuman"]
+        # human readable
+        title = datetime.utcfromtimestamp(header["timestamp"]).strftime('%Y-%m-%d %H:%M:%S')
 
     uid = str(uuid4())
 
