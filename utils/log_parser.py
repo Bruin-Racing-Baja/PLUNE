@@ -12,7 +12,7 @@ import scipy.signal
 from google.protobuf import json_format
 from google.protobuf import message as _message
 
-from generated_protos import operation_header_pb2, control_function_state_pb2, error_state_pb2
+from generated_protos import operation_header_pb2, control_function_state_pb2#, error_state_pb2
 
 pd.options.mode.chained_assignment = None
 
@@ -67,7 +67,7 @@ def nextDelimitedMessage(
     if raw_message_id == b"":
         return None, MessageID.NONE
 
-    print(raw_message_id)
+    #print(raw_message_id)
     message_id = MessageID(int(raw_message_id, 16))
 
     raw_message_length = buffer.read(4)
@@ -277,11 +277,11 @@ def postProcessDataframe(df: pd.DataFrame):
     b, a = scipy.signal.butter(1, 2, fs=100)
 
     
-    df["throttle_filt"] = scipy.signal.lfilter(b, a, scipy.signal.medfilt(df["throttle"],5))
+    #df["throttle_filt"] = scipy.signal.lfilter(b, a, scipy.signal.medfilt(df["throttle"],5))
     b, a = scipy.signal.butter(1, 0.1, fs=100)
     df["brake_filt"] = scipy.signal.lfilter(b, a, df["brake"])
     df["filtered_engine_rpm"] = np.clip(df["filtered_engine_rpm"], -100, 5000)
-    df["d_throttle"] = paddedDiff(df["throttle_filt"])
+    #df["d_throttle"] = paddedDiff(df["throttle_filt"])
     #df["filtered_engine_rpm"] = df["filtered_engine_rpm"].to_numpy()[np.where(np.abs(df["filtered_engine_rpm"].to_numpy()) >4500 )]
 
 #    df["secondary_rpm"] = df["wheel_rpm"] * wheel_to_secondary_ratio
@@ -316,6 +316,8 @@ def postProcessDataframe(df: pd.DataFrame):
         df["sim_velocity_command_p"] + df["sim_velocity_command_d"]
     )
     print(df["sim_velocity_command"])
+
+    print(df.columns)
 #
 #    df["control_cycle_execution_time_us"] = (
 #        df["control_cycle_stop_us"].shift(-1)

@@ -14,6 +14,16 @@
     {
       "x_axis": "cycle_start_s",
       "y_axis": [
+        "lw_gear_count",
+        "rw_gear_count",
+        "left_front_wheel_rpm",
+        "right_front_wheel_rpm"
+      ],
+      "title": "test"
+    },
+    {
+      "x_axis": "cycle_start_s",
+      "y_axis": [
         "norm_engine_rpm",
         "norm_secondary_rpm",
         "norm_position_estimate"
