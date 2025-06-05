@@ -67,7 +67,6 @@ def nextDelimitedMessage(
     if raw_message_id == b"":
         return None, MessageID.NONE
 
-    #print(raw_message_id)
     message_id = MessageID(int(raw_message_id, 16))
 
     raw_message_length = buffer.read(4)
@@ -156,6 +155,7 @@ def loadTar(filename: str) -> LogData:
         if "dataframe.parquet" in tar_members:
             dataframe_file = tar.extractfile("dataframe.parquet")
             log_data.df = pd.read_parquet(io.BytesIO(dataframe_file.read()))
+            #print(log_data.header)
 
     return log_data
 
@@ -227,6 +227,8 @@ def appendNormalizedSeries(df: pd.DataFrame) -> None:
                 df[col_norm] = (cur_series - np.min(cur_series)) / (
                     np.max(cur_series) - np.min(cur_series)
                 )
+    df['vel_p'] = df['engine_rpm_error'] * df['p_term']
+    df['vel_d'] = df['engine_rpm_derror'] * df['d_term']
 
 
 def trimDataframe(
@@ -244,6 +246,7 @@ def postProcessDataframe(df: pd.DataFrame):
     actuator_belt_ratio = 1.5  # ballscrew:motor
     encoder_cpr = 8192
     wheel_to_secondary_ratio = (57 / 18) * (45 / 17)
+   # print(df.columns)
     df["cycle_start_s"] = df["cycle_start_us"] / 1e6
     diff = df["cycle_start_s"].diff()
     df["inbound_limit_switch"] = df["inbound_limit_switch"].astype(int)
@@ -270,10 +273,10 @@ def postProcessDataframe(df: pd.DataFrame):
     trimDataframe(df, 5)
     ###df["filt_engine_rpm_derror"] = paddedDiff(df["filtered_engine_rpm"] - df["target_rpm"])
     #df["filt_engine_rpm_derror"] = paddedDiff(df["filt_engine_rpm_error"]) * 10
-    df["d_term"] = df["engine_rpm_derror"] *0.008;
-    df["p_term"] = df["engine_rpm_error"] *0.04;
+    #df["d_term"] = df["engine_rpm_derror"] *0.008;
+    #df["p_term"] = df["engine_rpm_error"] *0.04;
     df["all_term"] = df["p_term"] + df["d_term"];
-    df["wheel_mph"] = df["filtered_secondary_rpm"] / 7.975 * 6.842484e-02
+    df["wheel_mph"] = df["filtered_secondary_rpm"] / 8.978 * 6.842484e-02
     b, a = scipy.signal.butter(1, 2, fs=100)
 
     
@@ -317,7 +320,6 @@ def postProcessDataframe(df: pd.DataFrame):
     )
     print(df["sim_velocity_command"])
 
-    print(df.columns)
 #
 #    df["control_cycle_execution_time_us"] = (
 #        df["control_cycle_stop_us"].shift(-1)

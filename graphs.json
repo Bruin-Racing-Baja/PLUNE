@@ -7,7 +7,8 @@
         "filtered_engine_rpm",
         "target_rpm",
         "secondary_rpm",
-        "filtered_secondary_rpm"
+        "filtered_secondary_rpm",
+        "wheel_mph"
       ],
       "title": "Engine, Secondary, Target RPM"
     },
@@ -26,7 +27,10 @@
       "y_axis": [
         "norm_engine_rpm",
         "norm_secondary_rpm",
-        "norm_position_estimate"
+        "position_estimate",
+        "position_command",
+        "actuator_offset",
+        "pi_position_command"
       ],
       "title": "normalized engine/secondary rpm, actuator position"
     },
@@ -70,6 +74,18 @@
         "norm_disarm_reason"
       ],
       "title": "ibus and Disarm Reason"
+    },
+    {
+      "x_axis": "cycle_start_s",
+      "y_axis": [
+        "vel_p",
+        "vel_d",
+        "p_term",
+        "d_term",
+        "velocity_command"
+      ],
+      "title": "ibus and Disarm Reason"
     }
+
   ]
 }

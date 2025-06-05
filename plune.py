@@ -159,7 +159,7 @@ def constructGraphs(interval_id, data, graph_info_json) -> FigureResampler:
 )
 def update_fig(relayoutdata: dict, fig: FigureResampler):
     if fig is not None:
-        return fig.construct_update_data(relayoutdata)
+        return fig._construct_update_data(relayoutdata)
     return no_update
 
 
@@ -323,7 +323,7 @@ if __name__ == "__main__":
             log_idx += 1
     else:
         atexit.register(exitHandler)
-        app.run_server(debug=True)
+        app.run(debug=True)
     """
     elif args.clean:
         num_paths = len(raw_paths)
