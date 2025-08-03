@@ -7,3 +7,4 @@ scipy==1.15.2
 protobuf==4.25.2
 odrive==0.6.8
 pyarrow>==19.0.1
+trace-updater==0.0.9.1
