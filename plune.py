@@ -159,7 +159,7 @@ def constructGraphs(interval_id, data, graph_info_json) -> FigureResampler:
 )
 def update_fig(relayoutdata: dict, fig: FigureResampler):
     if fig is not None:
-        return fig._construct_update_data(relayoutdata)
+        return fig.construct_update_data(relayoutdata)
     return no_update
 
 

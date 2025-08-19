@@ -6,5 +6,5 @@ plotly_resampler==0.9.1
 scipy>=1.10
 protobuf==6.31.1
 odrive==0.6.8
-pyarrow>==19.0.1
+pyarrow>=19.0.1
 trace-updater==0.0.9.1
