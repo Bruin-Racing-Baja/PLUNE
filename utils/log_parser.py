@@ -320,6 +320,9 @@ def postProcessDataframe(df: pd.DataFrame):
     )
     print(df["sim_velocity_command"])
 
+
+    df["bus_power"] = df["bus_voltage"] * df["bus_current"]
+
 #
 #    df["control_cycle_execution_time_us"] = (
 #        df["control_cycle_stop_us"].shift(-1)
