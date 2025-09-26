@@ -333,7 +333,7 @@ def convert_all_tars_to_csv(logs_dir: str = "logs", out_dir: str | None = None, 
                 continue
 
             try:
-                df = pd.read_parquet(pq_path)  # needs pyarrow or fastparquet
+                df = pd.read_parquet(pq_path)
             except Exception as e:
                 print(f"[CSV] ERROR reading parquet in {tar_path}: {e}")
                 continue

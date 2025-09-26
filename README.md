@@ -30,5 +30,7 @@ The desired graphs to be displayed are defined in `graphs.json`. An example is a
 Run the webserver. Displays all JSON logs in `logs/` (must convert binary logs first).
 ### `./plune.py -c, --convert`
 Convert all raw binary logs to JSON files. By deafult, `raw_logs/*.bin` are converted to JSON files in `logs/`.
+### `./plune.py -csv, --csv`
+Convert all JSON files in `logs/` to CSV files in new directory `converted_csvs/`
 ### `./plune.py -e, --export`
 Export all JSON logs to HTML files for offline viewing. By default exports all `logs/*.json` into `graphs/`.
