@@ -15,9 +15,12 @@
     {
       "x_axis": "cycle_start_s",
       "y_axis": [
-        "wheel_mph"
+        "lw_gear_count",
+        "rw_gear_count",
+        "left_front_wheel_rpm",
+        "right_front_wheel_rpm"
       ],
-      "title": "speed"
+      "title": "test"
     },
     {
       "x_axis": "cycle_start_s",
@@ -60,13 +63,17 @@
     {
       "x_axis": "cycle_start_s",
       "y_axis": [
-        "total_charge_used",
-        "total_power_used",
-        "bus_current",
-        "bus_voltage",
-        "bus_power"
+        "disarm_reason"
       ],
-      "title": "Power"
+      "title": "Disarm Reason"
+    },
+    {
+      "x_axis": "cycle_start_s",
+      "y_axis": [
+        "bus_current",
+        "norm_disarm_reason"
+      ],
+      "title": "ibus and Disarm Reason"
     },
     {
       "x_axis": "cycle_start_s",

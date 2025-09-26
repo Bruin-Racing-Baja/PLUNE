@@ -7,6 +7,13 @@ import shutil
 from typing import List, Tuple
 from uuid import uuid4
 
+import glob
+import tarfile
+import tempfile
+from pathlib import Path
+
+
+
 import dash_bootstrap_components as dbc
 import numpy as np
 import pandas as pd
@@ -275,6 +282,73 @@ def exitHandler():
     shutil.rmtree("dash_cache_backend")
 
 
+def find_file(root_dir: str) -> str | None:
+
+    candidates = []
+    for p in Path(root_dir).rglob("*.parquet"):
+        try:
+            size = p.stat().st_size
+        except OSError:
+            size = 0
+        candidates.append((size, p))
+    if not candidates:
+        return None
+    candidates.sort(reverse=True)  
+    return str(candidates[0][1])
+
+
+def convert_all_tars_to_csv(logs_dir: str = "logs", out_dir: str | None = None, recurse: bool = True) -> int:
+    
+    logs_dir = logs_dir or "logs"
+    out_dir = out_dir or "converted_csvs"
+
+    os.makedirs(out_dir, exist_ok=True)
+    written = 0
+
+    tar_iter = Path(logs_dir).rglob("*.tar") if recurse else Path(logs_dir).glob("*.tar")
+    for tar_path in sorted(tar_iter):
+        base = tar_path.stem  
+        out_csv = Path(out_dir) / f"{base}.csv"
+        
+
+
+        if out_csv.exists():
+            print(f"[CSV] Skipping (already exists): {out_csv}")
+            continue
+
+        # extract into a temp dir
+        with tempfile.TemporaryDirectory(prefix="plune_extract_") as tmpd:
+            try:
+                with tarfile.open(tar_path, "r") as tf:
+                   
+                    members = [m for m in tf.getmembers() if m and not Path(m.name).is_absolute()]
+                    tf.extractall(tmpd, members=members)
+            except Exception as e:
+                print(f"[CSV] ERROR extracting {tar_path}: {e}")
+                continue
+
+            pq_path = find_file(tmpd)
+            if pq_path is None:
+                print(f"[CSV] No file found in {tar_path}")
+                continue
+
+            try:
+                df = pd.read_parquet(pq_path)  # needs pyarrow or fastparquet
+            except Exception as e:
+                print(f"[CSV] ERROR reading parquet in {tar_path}: {e}")
+                continue
+
+            try:
+                df.to_csv(out_csv, index=False)
+                print(f"[CSV] Wrote {out_csv}")
+                written += 1
+            except Exception as e:
+                print(f"[CSV] ERROR writing CSV for {tar_path}: {e}")
+                # do not increment
+
+    return written
+
+
 if __name__ == "__main__":
     # hi cal poly slo
     parser = argparse.ArgumentParser(description="PLotting Utility N Exporter")
@@ -282,6 +356,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "-c", "--convert", action="store_true", help="convert all logs to json files"
     )
+
+    parser.add_argument("-csv", "--csv", action="store_true", help="Convert JSON logs to CSV")
+    parser.add_argument("--csv-src", default="logs",
+                        help="Directory containing .tar logs (default: logs/)")
+    parser.add_argument("--csv-out", default="converted_csvs",
+                        help="Directory to write CSVs (default: converted_csvs/)")
+
 
     """
     parser.add_argument(
@@ -321,6 +402,12 @@ if __name__ == "__main__":
                 )
                 log_parser.dumpTar(log_path, log_data)
             log_idx += 1
+    elif args.csv:
+        written = convert_all_tars_to_csv(args.csv_src, args.csv_out)
+        if written == 0:
+            print("[CSV] Nothing converted (either no .tar files, parquet missing, or all already present).")
+        
+
     else:
         atexit.register(exitHandler)
         app.run(debug=True)
